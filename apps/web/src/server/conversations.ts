@@ -26,6 +26,8 @@ export type InboxListItemDto = {
   unreadCount: number;
   isNew: boolean;
   awaitingReply: boolean;
+  lastSenderSide: "client" | "seller" | "unknown";
+  lastSenderUsername?: string;
   referenceId?: string;
 };
 
@@ -107,6 +109,8 @@ export async function fetchInboxList(): Promise<ActionResult<InboxListItemDto[]>
         unreadCount: item.unreadCount,
         isNew: item.isNew,
         awaitingReply: item.awaitingReply,
+        lastSenderSide: item.lastSenderSide,
+        lastSenderUsername: item.lastSenderUsername,
         referenceId: item.referenceId,
       })),
     };
@@ -124,7 +128,11 @@ export async function fetchConversationDetail(
       const ctx = await buildAssistantContext(conversationId);
       const authUsername = await getAuthenticatedUsername();
       const listingSeller = ctx.listing?.sellerUsername;
-      const me = listingSeller || authUsername;
+      const sellerNames = [listingSeller, authUsername].filter(
+        (v): v is string => Boolean(v?.trim()),
+      );
+      const isSeller = (name: string | undefined) =>
+        sellerNames.some((seller) => sameUser(name, seller));
 
       const sellerUsername = listingSeller || authUsername;
       const sellerProfile = sellerUsername
@@ -138,7 +146,7 @@ export async function fetchConversationDetail(
         if (m.recipientUsername) parties.add(m.recipientUsername);
       }
       const buyer =
-        [...parties].find((name) => me && !sameUser(name, me)) ||
+        [...parties].find((name) => !isSeller(name)) ||
         ctx.latestMessage?.senderUsername ||
         "(acheteur inconnu)";
 
@@ -149,7 +157,7 @@ export async function fetchConversationDetail(
         createdDate: m.createdDate,
         dateLabel: formatConversationDate(m.createdDate),
         body: m.messageBody?.trim() || "(vide)",
-        isFromSeller: Boolean(me && sameUser(m.senderUsername, me)),
+        isFromSeller: isSeller(m.senderUsername),
       });
 
       const messages = messagesSorted.map(toDto);

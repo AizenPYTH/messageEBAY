@@ -35,6 +35,7 @@ export function ConversationsWorkspace() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<ConversationDetailDto | null>(null);
   const [query, setQuery] = useState("");
+  const [inboxTab, setInboxTab] = useState<"todo" | "done">("todo");
   const [draft, setDraft] = useState("");
   const [editing, setEditing] = useState(true);
   const [generation, setGeneration] = useState<AiGenerationDto | null>(null);
@@ -111,17 +112,19 @@ export function ConversationsWorkspace() {
     );
   }, [items, query]);
 
-  const awaitingReply = useMemo(
+  const todoItems = useMemo(
     () => filtered.filter((item) => item.awaitingReply),
     [filtered],
   );
-  const alreadyReplied = useMemo(
+  const doneItems = useMemo(
     () => filtered.filter((item) => !item.awaitingReply),
     [filtered],
   );
+  const visibleItems = inboxTab === "todo" ? todoItems : doneItems;
 
   function renderInboxItem(item: InboxListItemDto) {
     const active = item.conversationId === selectedId;
+    const fromClient = item.lastSenderSide === "client";
     return (
       <button
         key={item.conversationId}
@@ -130,20 +133,24 @@ export function ConversationsWorkspace() {
         className={cn(
           "w-full rounded-lg border px-3 py-3 text-left transition-colors",
           active
-            ? "border-zinc-300 bg-muted-bg"
-            : "border-border hover:bg-muted-bg/60",
+            ? "border-amber-300 bg-amber-50/70"
+            : fromClient
+              ? "border-amber-200/80 bg-amber-50/30 hover:bg-amber-50/60"
+              : "border-border hover:bg-muted-bg/60",
         )}
       >
         <div className="flex items-start justify-between gap-2">
-          <span className="truncate text-sm font-medium">{item.buyer}</span>
-          {item.awaitingReply ? (
-            <Badge tone="warning">À répondre</Badge>
-          ) : (
-            <Badge tone="neutral">Répondu</Badge>
-          )}
+          <span className="truncate text-sm font-semibold">{item.buyer}</span>
+          <Badge tone={fromClient ? "warning" : "success"}>
+            {fromClient ? "Client" : "Vous"}
+          </Badge>
         </div>
         <p className="mt-1 truncate text-xs text-muted">{item.listingTitle}</p>
-        <p className="mt-1 line-clamp-2 text-xs text-foreground/80">
+        <p className="mt-2 text-[11px] font-medium text-muted">
+          Dernier msg · {fromClient ? "client" : "vous"}
+          {item.lastSenderUsername ? ` (${item.lastSenderUsername})` : ""}
+        </p>
+        <p className="mt-0.5 line-clamp-2 text-xs text-foreground/85">
           {item.lastMessagePreview}
         </p>
         <p className="mt-1.5 text-[11px] text-muted">{item.dateLabel}</p>
@@ -237,8 +244,8 @@ export function ConversationsWorkspace() {
         {/* Inbox */}
         <Card className="flex min-h-[28rem] flex-col overflow-hidden">
           <CardHeader
-            title="Inbox"
-            description={`${awaitingReply.length} à répondre · ${alreadyReplied.length} déjà répondu`}
+            title="Messages"
+            description="Basé sur le dernier message réel (date)"
             action={
               <Button
                 size="sm"
@@ -252,10 +259,43 @@ export function ConversationsWorkspace() {
             }
           />
           <CardBody className="flex flex-1 flex-col gap-3 overflow-hidden">
+            <div className="grid grid-cols-2 gap-1 rounded-lg border border-border bg-muted-bg/50 p-1">
+              <button
+                type="button"
+                onClick={() => setInboxTab("todo")}
+                className={cn(
+                  "rounded-md px-2 py-2 text-xs font-semibold transition-colors",
+                  inboxTab === "todo"
+                    ? "bg-amber-500 text-white shadow-sm"
+                    : "text-muted hover:text-foreground",
+                )}
+              >
+                À traiter ({todoItems.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setInboxTab("done")}
+                className={cn(
+                  "rounded-md px-2 py-2 text-xs font-semibold transition-colors",
+                  inboxTab === "done"
+                    ? "bg-zinc-800 text-white shadow-sm"
+                    : "text-muted hover:text-foreground",
+                )}
+              >
+                En attente client ({doneItems.length})
+              </button>
+            </div>
+
+            <p className="text-[11px] leading-relaxed text-muted">
+              {inboxTab === "todo"
+                ? "Le client a écrit en dernier — une réponse est attendue."
+                : "Vous avez écrit en dernier — en attente du client."}
+            </p>
+
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Rechercher client, annonce, message…"
+              placeholder="Rechercher client, annonce…"
               className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none ring-zinc-300 focus:ring-2"
             />
 
@@ -263,10 +303,10 @@ export function ConversationsWorkspace() {
               <p className="text-sm text-danger">{listError}</p>
             ) : null}
 
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
               {listPending && items.length === 0
                 ? Array.from({ length: 6 }).map((_, i) => (
-                    <Skeleton key={i} className="h-20 w-full" />
+                    <Skeleton key={i} className="h-24 w-full" />
                   ))
                 : null}
 
@@ -274,29 +314,15 @@ export function ConversationsWorkspace() {
                 <p className="text-sm text-muted">Aucune conversation.</p>
               ) : null}
 
-              {awaitingReply.length > 0 ? (
-                <div className="space-y-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
-                    À répondre ({awaitingReply.length})
-                  </p>
-                  {awaitingReply.map(renderInboxItem)}
-                </div>
-              ) : !listPending && filtered.length > 0 ? (
-                <p className="text-sm text-muted">
-                  Aucun message client en attente.
+              {!listPending && filtered.length > 0 && visibleItems.length === 0 ? (
+                <p className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-sm text-muted">
+                  {inboxTab === "todo"
+                    ? "Rien à traiter — passez à « En attente client »."
+                    : "Aucune conversation en attente client."}
                 </p>
               ) : null}
 
-              {alreadyReplied.length > 0 ? (
-                <details className="group space-y-2">
-                  <summary className="cursor-pointer list-none text-[11px] font-semibold uppercase tracking-wide text-muted">
-                    Déjà répondu ({alreadyReplied.length}) — replié
-                  </summary>
-                  <div className="mt-2 space-y-2 opacity-80">
-                    {alreadyReplied.map(renderInboxItem)}
-                  </div>
-                </details>
-              ) : null}
+              {visibleItems.map(renderInboxItem)}
             </div>
           </CardBody>
         </Card>

@@ -26,10 +26,18 @@ function printInboxList(items: InboxItem[]): void {
   }
 
   for (const [index, item] of items.entries()) {
-    const tag = item.awaitingReply ? " · À répondre" : " · Répondu";
-    console.log(`[${index + 1}] ${item.buyer}${tag}`);
+    const side =
+      item.lastSenderSide === "client"
+        ? "Client"
+        : item.lastSenderSide === "seller"
+          ? "Vous"
+          : "?";
+    const tag = item.awaitingReply ? "À traiter" : "En attente client";
+    console.log(`[${index + 1}] ${item.buyer} · ${tag}`);
     console.log(`Annonce : ${item.listingTitle}`);
-    console.log(`Dernier message : ${item.lastMessagePreview}`);
+    console.log(
+      `Dernier msg (${side}${item.lastSenderUsername ? ` · ${item.lastSenderUsername}` : ""}) : ${item.lastMessagePreview}`,
+    );
     console.log(`Date : ${item.dateLabel}`);
     console.log("");
   }

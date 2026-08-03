@@ -16,8 +16,11 @@ export type InboxItem = {
   dateLabel: string;
   unreadCount: number;
   isNew: boolean;
-  /** Last message is from the buyer — seller has not replied yet. */
+  /** True when the chronologically last message is from the client. */
   awaitingReply: boolean;
+  /** Who sent the last message for UI clarity. */
+  lastSenderSide: "client" | "seller" | "unknown";
+  lastSenderUsername?: string;
   referenceId?: string;
   summary: EbayConversationSummary;
 };
@@ -40,6 +43,31 @@ function sameUser(a: string | undefined, b: string | undefined): boolean {
   return Boolean(a && b && a.trim().toLowerCase() === b.trim().toLowerCase());
 }
 
+function isSellerSide(
+  username: string | undefined,
+  sellerUsernames: string[],
+): boolean {
+  return sellerUsernames.some((seller) => sameUser(username, seller));
+}
+
+function messageTime(message: EbayMessage | undefined): number {
+  if (!message?.createdDate) return 0;
+  const t = Date.parse(message.createdDate);
+  return Number.isFinite(t) ? t : 0;
+}
+
+/** Newest message by createdDate across detail + summary.latestMessage. */
+function pickLatestMessage(
+  messages: EbayMessage[],
+  summaryLatest?: EbayMessage,
+): EbayMessage | undefined {
+  const candidates = [...messages];
+  if (summaryLatest) candidates.push(summaryLatest);
+  if (candidates.length === 0) return undefined;
+
+  return [...candidates].sort((a, b) => messageTime(b) - messageTime(a))[0];
+}
+
 function sortNewestFirst(
   items: EbayConversationSummary[],
 ): EbayConversationSummary[] {
@@ -57,40 +85,36 @@ function sortNewestFirst(
 export function sortMessagesChronologically(
   messages: EbayMessage[],
 ): EbayMessage[] {
-  return [...messages].sort((a, b) => {
-    const ta = a.createdDate ? Date.parse(a.createdDate) : 0;
-    const tb = b.createdDate ? Date.parse(b.createdDate) : 0;
-    return ta - tb;
-  });
+  return [...messages].sort((a, b) => messageTime(a) - messageTime(b));
 }
 
-function resolveOtherParty(input: {
+function resolveBuyer(input: {
   authUsername?: string;
   listingSeller?: string;
+  otherParty?: string;
   latestMessage?: EbayMessage;
   messages: EbayMessage[];
-}): string | undefined {
-  const { authUsername, listingSeller, latestMessage, messages } = input;
-  const me = authUsername ?? listingSeller;
+}): string {
+  if (input.otherParty?.trim()) return input.otherParty.trim();
 
-  if (latestMessage) {
-    const { senderUsername, recipientUsername } = latestMessage;
-    if (me && senderUsername && !sameUser(senderUsername, me)) {
-      return senderUsername;
-    }
-    if (me && recipientUsername && !sameUser(recipientUsername, me)) {
-      return recipientUsername;
+  const sellers = [input.authUsername, input.listingSeller].filter(
+    (v): v is string => Boolean(v?.trim()),
+  );
+
+  const latest = pickLatestMessage(input.messages, input.latestMessage);
+  if (latest) {
+    for (const name of [latest.senderUsername, latest.recipientUsername]) {
+      if (name && !isSellerSide(name, sellers)) return name;
     }
   }
 
-  for (const message of messages) {
+  for (const message of input.messages) {
     for (const name of [message.senderUsername, message.recipientUsername]) {
-      if (name && me && !sameUser(name, me)) return name;
-      if (name && listingSeller && !sameUser(name, listingSeller)) return name;
+      if (name && !isSellerSide(name, sellers)) return name;
     }
   }
 
-  return undefined;
+  return "(acheteur inconnu)";
 }
 
 async function enrichInboxItem(
@@ -131,51 +155,54 @@ async function enrichInboxItem(
     if (summary.latestMessage) messages = [summary.latestMessage];
   }
 
-  const buyer =
-    summary.otherPartyUsername?.trim() ||
-    resolveOtherParty({
-      authUsername,
-      listingSeller,
-      latestMessage: summary.latestMessage,
-      messages,
-    }) ||
-    "(acheteur inconnu)";
-
-  const buyerMessages = messages.filter((m) =>
-    sameUser(m.senderUsername, buyer),
+  const sellerUsernames = [authUsername, listingSeller].filter(
+    (v): v is string => Boolean(v?.trim()),
   );
-  const previewMessage =
-    buyerMessages[buyerMessages.length - 1] ??
-    messages[messages.length - 1] ??
-    summary.latestMessage;
 
-  const dateIso =
-    previewMessage?.createdDate ??
-    summary.modifiedDate ??
-    summary.latestMessage?.createdDate ??
-    summary.createdDate;
+  const buyer = resolveBuyer({
+    authUsername,
+    listingSeller,
+    otherParty: summary.otherPartyUsername,
+    latestMessage: summary.latestMessage,
+    messages,
+  });
 
+  // Single source of truth: chronologically last message
+  const lastMessage = pickLatestMessage(messages, summary.latestMessage);
+  const lastSenderUsername = lastMessage?.senderUsername?.trim() || undefined;
+
+  let lastSenderSide: InboxItem["lastSenderSide"] = "unknown";
+  if (lastSenderUsername) {
+    if (isSellerSide(lastSenderUsername, sellerUsernames)) {
+      lastSenderSide = "seller";
+    } else if (
+      sameUser(lastSenderUsername, buyer) ||
+      sellerUsernames.length > 0
+    ) {
+      // Not a known seller → treat as client
+      lastSenderSide = "client";
+    }
+  }
+
+  const awaitingReply = lastSenderSide === "client";
   const unreadCount = summary.unreadCount ?? 0;
-  const lastMessage = messages[messages.length - 1] ?? summary.latestMessage;
-  const me = authUsername ?? listingSeller;
-  const lastFromBuyer = Boolean(
-    lastMessage?.senderUsername &&
-      (sameUser(lastMessage.senderUsername, buyer) ||
-        (me && !sameUser(lastMessage.senderUsername, me))),
-  );
-  // Priority: client wrote last (you have not replied yet)
-  const awaitingReply = lastFromBuyer || (unreadCount > 0 && !me);
+  const dateIso =
+    lastMessage?.createdDate ??
+    summary.modifiedDate ??
+    summary.createdDate;
 
   return {
     conversationId,
     buyer,
     listingTitle,
-    lastMessagePreview: previewText(previewMessage?.messageBody),
+    lastMessagePreview: previewText(lastMessage?.messageBody),
     dateIso,
     dateLabel: formatConversationDate(dateIso),
     unreadCount,
     isNew: unreadCount > 0 || awaitingReply,
     awaitingReply,
+    lastSenderSide,
+    ...(lastSenderUsername ? { lastSenderUsername } : {}),
     ...(referenceId ? { referenceId } : {}),
     summary,
   };
@@ -199,7 +226,6 @@ export async function loadInboxItems(limit = 50): Promise<InboxItem[]> {
 
   const items = enriched.filter((item): item is InboxItem => item !== null);
 
-  // À répondre first, then already-replied — each group newest first
   return items.sort((a, b) => {
     if (a.awaitingReply !== b.awaitingReply) {
       return a.awaitingReply ? -1 : 1;
