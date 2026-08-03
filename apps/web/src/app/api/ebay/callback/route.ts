@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { getOptionalUser, isAuthEnforced } from "@/server/auth";
+import { resolveActor } from "@/server/auth";
 import { completeEbayOAuthWithCode } from "@/server/ebayOAuthComplete";
+import { isEbayLinkReady } from "@/server/guestSession";
 import { ensureServerEnv } from "@/server/env";
 
 const STATE_COOKIE = "ebay_oauth_state";
@@ -8,8 +9,7 @@ const STATE_COOKIE = "ebay_oauth_state";
 export async function GET(request: Request) {
   ensureServerEnv();
   const url = new URL(request.url);
-  // Prefer the request host so local http://localhost works even if APP_URL is https://local.host
-  const origin = url.origin;
+  const origin = process.env.NEXT_PUBLIC_APP_URL?.trim() || url.origin;
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
   const ebayError = url.searchParams.get("error");
@@ -28,15 +28,8 @@ export async function GET(request: Request) {
     return redirect(`/settings/connections?error=${encodeURIComponent(ebayError)}`);
   }
 
-  if (!isAuthEnforced()) {
-    return redirect("/settings/connections?error=auth_required");
-  }
-
-  const user = await getOptionalUser();
-  if (!user) {
-    return redirect(
-      `/login?next=${encodeURIComponent("/settings/connections")}`,
-    );
+  if (!isEbayLinkReady()) {
+    return redirect("/settings/connections?error=oauth_not_ready");
   }
 
   const cookieHeader = request.headers.get("cookie") ?? "";
@@ -46,7 +39,6 @@ export async function GET(request: Request) {
     .find((part) => part.startsWith(`${STATE_COOKIE}=`))
     ?.slice(STATE_COOKIE.length + 1);
 
-  // Soften state check: if cookie missing (cross-host redirect), still allow when logged in.
   if (state && expectedState && state !== expectedState) {
     return redirect("/settings/connections?error=invalid_state");
   }
@@ -56,6 +48,7 @@ export async function GET(request: Request) {
   }
 
   try {
+    const user = await resolveActor();
     await completeEbayOAuthWithCode(user, code);
     return redirect("/settings/connections?connected=1");
   } catch (error: unknown) {

@@ -140,13 +140,11 @@ export function ConnectionsPanel({
             </div>
           </dl>
 
-          {!authConfigured ? (
-            <p className="text-xs text-muted">
-              Mode test (sans login) : l’API utilise{" "}
-              <code>EBAY_USER_ACCESS_TOKEN</code> côté serveur. La liaison OAuth
-              par utilisateur reviendra quand l’auth sera réactivée.
-            </p>
-          ) : null}
+          <p className="text-xs text-muted">
+            {authConfigured
+              ? "Chaque PC / navigateur peut connecter son propre compte eBay (sans login e-mail). Après OAuth, Conversations utilise ce compte."
+              : "OAuth incomplet : vérifiez EBAY_CLIENT_ID/SECRET/RUNAME et TOKEN_ENCRYPTION_KEY sur Vercel."}
+          </p>
 
           <div className="flex flex-wrap gap-2">
             <a href="/api/ebay/connect">

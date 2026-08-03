@@ -13,24 +13,28 @@ import { ensureServerEnv, hasEnv } from "@/server/env";
 export type { EbayConnectionPublic };
 
 /**
- * Run engine work with the current user's eBay token when auth is on.
- * Falls back to `.env` EBAY_USER_ACCESS_TOKEN in soft/dev mode.
+ * Prefer per-browser eBay connection; fall back to server .env token.
  */
 export async function withEbayContext<T>(fn: () => Promise<T>): Promise<T> {
   ensureServerEnv();
-  const user = await getOptionalUser();
 
+  const user = await getOptionalUser();
   if (user) {
-    return withUserEbayToken(user.id, fn);
+    const token = await resolveEbayAccessToken(user.id).catch(() => null);
+    if (token) {
+      return withUserEbayToken(user.id, fn);
+    }
   }
 
   if (isAuthEnforced()) {
-    throw new Error("Connexion requise");
+    throw new Error(
+      "Compte eBay non connecté. Allez dans Paramètres → Connexions.",
+    );
   }
 
   if (!hasEnv("EBAY_USER_ACCESS_TOKEN")) {
     throw new Error(
-      "Aucun token eBay. Connectez eBay dans Paramètres, ou définissez EBAY_USER_ACCESS_TOKEN.",
+      "Aucun token eBay. Connectez eBay dans Paramètres → Connexions.",
     );
   }
 
@@ -39,30 +43,32 @@ export async function withEbayContext<T>(fn: () => Promise<T>): Promise<T> {
 
 export async function getCurrentEbayConnection(): Promise<EbayConnectionPublic> {
   ensureServerEnv();
+
   const user = await getOptionalUser();
-  if (!user) {
-    if (hasEnv("EBAY_USER_ACCESS_TOKEN")) {
-      return {
-        connected: true,
-        username: "(token .env local)",
-        expiresAt: null,
-        lastTestedAt: null,
-        lastSyncAt: null,
-      };
-    }
-    return { connected: false };
+  if (user) {
+    const row = await getEbayConnection(user.id).catch(() => null);
+    if (row) return toPublicConnection(row);
   }
 
-  const row = await getEbayConnection(user.id);
-  return toPublicConnection(row);
+  if (hasEnv("EBAY_USER_ACCESS_TOKEN")) {
+    return {
+      connected: true,
+      username: "(token serveur .env — connectez eBay pour un compte par PC)",
+      expiresAt: null,
+      lastTestedAt: null,
+      lastSyncAt: null,
+    };
+  }
+
+  return { connected: false };
 }
 
 export async function hasUsableEbayToken(): Promise<boolean> {
   ensureServerEnv();
   const user = await getOptionalUser();
   if (user) {
-    const token = await resolveEbayAccessToken(user.id);
-    return Boolean(token);
+    const token = await resolveEbayAccessToken(user.id).catch(() => null);
+    if (token) return true;
   }
   return hasEnv("EBAY_USER_ACCESS_TOKEN");
 }

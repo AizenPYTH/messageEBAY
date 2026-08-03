@@ -2,7 +2,6 @@ import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getOptionalUser, isAuthEnforced } from "@/server/auth";
 import { ensureServerEnv } from "@/server/env";
-import { SignOutButton } from "@/features/auth/sign-out-button";
 
 export const dynamic = "force-dynamic";
 
@@ -15,32 +14,25 @@ export default async function AccountPage() {
     <Card>
       <CardHeader
         title="Compte application"
-        description="Login e-mail / Google désactivés pour les tests (SKIP_AUTH)."
+        description="Login e-mail / Google désactivés. Identité navigateur pour lier eBay."
       />
       <CardBody className="space-y-4 text-sm">
-        <div className="flex items-center gap-2">
-          <Badge tone={user ? "success" : enforced ? "warning" : "neutral"}>
-            {user ? "Connecté" : enforced ? "Non connecté" : "Mode test (sans login)"}
-          </Badge>
-        </div>
+        <Badge tone={enforced ? "warning" : "neutral"}>
+          {enforced ? "Auth e-mail active" : "Mode sans login (invité / PC)"}
+        </Badge>
         {user ? (
           <dl className="space-y-2">
             <div>
-              <dt className="text-xs text-muted">E-mail</dt>
-              <dd>{user.email ?? "—"}</dd>
-            </div>
-            <div>
-              <dt className="text-xs text-muted">User ID</dt>
+              <dt className="text-xs text-muted">Identifiant navigateur</dt>
               <dd className="font-mono text-xs">{user.id}</dd>
             </div>
           </dl>
         ) : (
           <p className="text-muted">
-            Pas de compte app pour l’instant — l’API eBay utilise le token
-            serveur (.env / Vercel).
+            Cliquez « Connecter eBay » pour créer l’identité de ce PC et lier un
+            compte vendeur.
           </p>
         )}
-        {user ? <SignOutButton /> : null}
       </CardBody>
     </Card>
   );

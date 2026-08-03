@@ -4,7 +4,7 @@ import {
   listConversations,
   markEbayConnectionTested,
 } from "@/server/core";
-import { getOptionalUser, isAuthEnforced } from "@/server/auth";
+import { getOptionalUser, resolveActor } from "@/server/auth";
 import { withEbayContext } from "@/server/ebaySession";
 import { ensureServerEnv } from "@/server/env";
 
@@ -18,9 +18,11 @@ export async function POST() {
       return { username };
     });
 
-    const user = await getOptionalUser();
-    if (user && isAuthEnforced()) {
+    try {
+      const user = (await getOptionalUser()) ?? (await resolveActor());
       await markEbayConnectionTested(user.id);
+    } catch {
+      // optional
     }
 
     return NextResponse.json({

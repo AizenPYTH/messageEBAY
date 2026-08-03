@@ -1,24 +1,21 @@
 import { NextResponse } from "next/server";
 import { resolveEbayAccessToken } from "@/server/core";
-import { getOptionalUser, isAuthEnforced } from "@/server/auth";
+import { resolveActor } from "@/server/auth";
+import { isEbayLinkReady } from "@/server/guestSession";
 import { ensureServerEnv } from "@/server/env";
 
 export async function POST() {
   ensureServerEnv();
 
-  if (!isAuthEnforced()) {
+  if (!isEbayLinkReady()) {
     return NextResponse.json(
-      { ok: false, error: "Auth Supabase non configurée" },
+      { ok: false, error: "OAuth eBay non configuré" },
       { status: 400 },
     );
   }
 
-  const user = await getOptionalUser();
-  if (!user) {
-    return NextResponse.json({ ok: false, error: "Non authentifié" }, { status: 401 });
-  }
-
   try {
+    const user = await resolveActor();
     const token = await resolveEbayAccessToken(user.id);
     if (!token) {
       return NextResponse.json(

@@ -1,25 +1,20 @@
 import { NextResponse } from "next/server";
-import { getOptionalUser, isAuthEnforced } from "@/server/auth";
+import { resolveActor } from "@/server/auth";
 import { completeEbayOAuthWithCode } from "@/server/ebayOAuthComplete";
+import { isEbayLinkReady } from "@/server/guestSession";
 import { ensureServerEnv } from "@/server/env";
 
 /**
  * Fallback when eBay stays on ThirdPartyAuthSucessFailure instead of redirecting.
- * User pastes the full eBay URL (or just the code= value).
  */
 export async function POST(request: Request) {
   ensureServerEnv();
 
-  if (!isAuthEnforced()) {
+  if (!isEbayLinkReady()) {
     return NextResponse.json(
-      { ok: false, error: "Auth Supabase non configurée" },
+      { ok: false, error: "OAuth eBay non configuré (credentials / TOKEN_ENCRYPTION_KEY)" },
       { status: 400 },
     );
-  }
-
-  const user = await getOptionalUser();
-  if (!user) {
-    return NextResponse.json({ ok: false, error: "Non authentifié" }, { status: 401 });
   }
 
   let body: { urlOrCode?: string };
@@ -38,6 +33,7 @@ export async function POST(request: Request) {
   }
 
   try {
+    const user = await resolveActor();
     const result = await completeEbayOAuthWithCode(user, urlOrCode);
     return NextResponse.json({ ok: true, username: result.username ?? null });
   } catch (error: unknown) {
