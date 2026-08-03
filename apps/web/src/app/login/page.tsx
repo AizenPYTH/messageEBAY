@@ -1,8 +1,7 @@
 import Link from "next/link";
-import { AUTH_PROVIDERS } from "@/auth/config";
+import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
-import { LoginForm } from "@/features/auth/login-form";
-import { isSupabaseAuthConfigured } from "@/lib/supabase/env";
+import { isAuthSkipped } from "@/lib/auth-mode";
 import { ensureServerEnv } from "@/server/env";
 
 export const dynamic = "force-dynamic";
@@ -14,8 +13,8 @@ type Props = {
 export default async function LoginPage({ searchParams }: Props) {
   ensureServerEnv();
   const params = searchParams ? await searchParams : {};
-  const configured = isSupabaseAuthConfigured();
   const nextPath = params.next || "/dashboard";
+  const skipAuth = isAuthSkipped();
 
   return (
     <div className="flex min-h-full items-center justify-center bg-background px-4 py-16">
@@ -25,66 +24,37 @@ export default async function LoginPage({ searchParams }: Props) {
             EA
           </div>
           <h1 className="mt-4 text-xl font-semibold tracking-tight">
-            Connexion
+            eBay AI
           </h1>
           <p className="mt-1 text-sm text-muted">
-            Compte application via e-mail. eBay se connecte ensuite dans
-            Paramètres.
+            {skipAuth
+              ? "Mode test — pas de login e-mail / Google."
+              : "Connexion application"}
           </p>
         </div>
 
         <Card>
           <CardHeader
-            title="E-mail"
+            title="Accès rapide"
             description={
-              configured
-                ? "Recevez un lien magique (pas de mot de passe)."
-                : "Supabase Auth non configuré — mode développement possible."
+              skipAuth
+                ? "Entre directement dans l’app. Connecte eBay ensuite si besoin (ou token .env)."
+                : "Auth activée — configure SKIP_AUTH=true pour tester sans login."
             }
           />
-          <CardBody>
-            <LoginForm configured={configured} nextPath={nextPath} />
+          <CardBody className="space-y-3">
+            <Link href={nextPath} className="block">
+              <Button type="button" variant="primary" className="w-full">
+                Entrer dans l’app
+              </Button>
+            </Link>
             {params.error ? (
-              <p className="mt-3 text-xs text-danger">
-                Échec de connexion ({params.error}).
+              <p className="text-xs text-danger">
+                Échec ({params.error}).
               </p>
             ) : null}
           </CardBody>
         </Card>
-
-        <Card>
-          <CardHeader title="Autres options" description="Activation progressive" />
-          <CardBody className="space-y-2">
-            {AUTH_PROVIDERS.filter((p) => p.provider !== "email").map(
-              (provider) => (
-                <button
-                  key={provider.provider}
-                  type="button"
-                  disabled={!provider.enabled}
-                  className="flex w-full flex-col rounded-lg border border-border px-3 py-3 text-left transition-colors enabled:hover:bg-muted-bg disabled:cursor-not-allowed disabled:opacity-55"
-                >
-                  <span className="text-sm font-medium text-foreground">
-                    {provider.label}
-                  </span>
-                  <span className="text-xs text-muted">
-                    {provider.description}
-                  </span>
-                </button>
-              ),
-            )}
-          </CardBody>
-        </Card>
-
-        {!configured ? (
-          <div className="text-center text-sm">
-            <Link
-              href="/dashboard"
-              className="font-medium text-foreground underline-offset-2 hover:underline"
-            >
-              Continuer sans compte (dev / token .env)
-            </Link>
-          </div>
-        ) : null}
       </div>
     </div>
   );

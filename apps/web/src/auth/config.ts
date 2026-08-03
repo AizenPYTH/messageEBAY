@@ -7,24 +7,18 @@ export type ProviderAvailability = {
   enabled: boolean;
 };
 
-/** Email magic link is the primary app login; Google later; eBay is a linked API account. */
+/** Auth providers paused while testing (SKIP_AUTH). */
 export const AUTH_PROVIDERS: ProviderAvailability[] = [
   {
     provider: "email",
     label: "Continuer avec e-mail",
-    description: "Lien magique Supabase (recommandé)",
-    enabled: true,
+    description: "Désactivé pour les tests",
+    enabled: false,
   },
   {
     provider: "google",
     label: "Continuer avec Google",
-    description: "Disponible après configuration OAuth Google",
-    enabled: false,
-  },
-  {
-    provider: "ebay",
-    label: "Connecter eBay",
-    description: "Après login — Paramètres → Connexions (API vendeur)",
+    description: "Désactivé pour les tests",
     enabled: false,
   },
 ];

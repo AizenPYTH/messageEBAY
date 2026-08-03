@@ -15,12 +15,12 @@ export default async function AccountPage() {
     <Card>
       <CardHeader
         title="Compte application"
-        description="Identité Supabase Auth (indépendante d’eBay)."
+        description="Login e-mail / Google désactivés pour les tests (SKIP_AUTH)."
       />
       <CardBody className="space-y-4 text-sm">
         <div className="flex items-center gap-2">
           <Badge tone={user ? "success" : enforced ? "warning" : "neutral"}>
-            {user ? "Connecté" : enforced ? "Non connecté" : "Mode dev"}
+            {user ? "Connecté" : enforced ? "Non connecté" : "Mode test (sans login)"}
           </Badge>
         </div>
         {user ? (
@@ -36,9 +36,8 @@ export default async function AccountPage() {
           </dl>
         ) : (
           <p className="text-muted">
-            {enforced
-              ? "Connectez-vous via /login."
-              : "Auth non configurée — le web utilise le token .env local."}
+            Pas de compte app pour l’instant — l’API eBay utilise le token
+            serveur (.env / Vercel).
           </p>
         )}
         {user ? <SignOutButton /> : null}

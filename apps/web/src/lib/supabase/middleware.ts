@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { isAuthSkipped } from "@/lib/auth-mode";
 import {
   getPublicSupabaseAnonKey,
   getPublicSupabaseUrl,
@@ -9,7 +10,8 @@ import {
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
-  if (!isSupabaseAuthConfigured()) {
+  // Testing mode: no login / magic link / Google gate
+  if (isAuthSkipped() || !isSupabaseAuthConfigured()) {
     return supabaseResponse;
   }
 

@@ -1,6 +1,7 @@
 import "server-only";
 import { upsertAppProfile } from "@/server/core";
 import { ensureServerEnv } from "@/server/env";
+import { isAuthSkipped } from "@/lib/auth-mode";
 import { isSupabaseAuthConfigured } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
 
@@ -10,9 +11,13 @@ export type AppUser = {
   displayName?: string;
 };
 
-/** Soft mode: when Supabase Auth env is missing, web falls back to CLI .env token. */
+/**
+ * Soft mode when SKIP_AUTH / Supabase Auth unset:
+ * no login gate — engine uses EBAY_USER_ACCESS_TOKEN from env.
+ */
 export function isAuthEnforced(): boolean {
   ensureServerEnv();
+  if (isAuthSkipped()) return false;
   return isSupabaseAuthConfigured();
 }
 
