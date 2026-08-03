@@ -6,6 +6,11 @@ import {
   type EbayMessage,
 } from "../ebay/messageApi.js";
 import { getListingDetails } from "../ebay/tradingApi.js";
+import {
+  resolveClientUsername,
+  resolveSelfUsername,
+  sideOfSender,
+} from "./messageSides.js";
 
 export type InboxItem = {
   conversationId: string;
@@ -18,7 +23,6 @@ export type InboxItem = {
   isNew: boolean;
   /** True when the chronologically last message is from the client. */
   awaitingReply: boolean;
-  /** Who sent the last message for UI clarity. */
   lastSenderSide: "client" | "seller" | "unknown";
   lastSenderUsername?: string;
   referenceId?: string;
@@ -37,17 +41,6 @@ function previewText(text: string | undefined, max = 80): string {
   const clean = (text ?? "").replace(/\s+/g, " ").trim();
   if (!clean) return "(pas de message)";
   return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
-}
-
-function sameUser(a: string | undefined, b: string | undefined): boolean {
-  return Boolean(a && b && a.trim().toLowerCase() === b.trim().toLowerCase());
-}
-
-function isSellerSide(
-  username: string | undefined,
-  sellerUsernames: string[],
-): boolean {
-  return sellerUsernames.some((seller) => sameUser(username, seller));
 }
 
 function messageTime(message: EbayMessage | undefined): number {
@@ -88,35 +81,6 @@ export function sortMessagesChronologically(
   return [...messages].sort((a, b) => messageTime(a) - messageTime(b));
 }
 
-function resolveBuyer(input: {
-  authUsername?: string;
-  listingSeller?: string;
-  otherParty?: string;
-  latestMessage?: EbayMessage;
-  messages: EbayMessage[];
-}): string {
-  if (input.otherParty?.trim()) return input.otherParty.trim();
-
-  const sellers = [input.authUsername, input.listingSeller].filter(
-    (v): v is string => Boolean(v?.trim()),
-  );
-
-  const latest = pickLatestMessage(input.messages, input.latestMessage);
-  if (latest) {
-    for (const name of [latest.senderUsername, latest.recipientUsername]) {
-      if (name && !isSellerSide(name, sellers)) return name;
-    }
-  }
-
-  for (const message of input.messages) {
-    for (const name of [message.senderUsername, message.recipientUsername]) {
-      if (name && !isSellerSide(name, sellers)) return name;
-    }
-  }
-
-  return "(acheteur inconnu)";
-}
-
 async function enrichInboxItem(
   summary: EbayConversationSummary,
   authUsername: string | undefined,
@@ -155,41 +119,35 @@ async function enrichInboxItem(
     if (summary.latestMessage) messages = [summary.latestMessage];
   }
 
-  const sellerUsernames = [authUsername, listingSeller].filter(
-    (v): v is string => Boolean(v?.trim()),
-  );
-
-  const buyer = resolveBuyer({
-    authUsername,
-    listingSeller,
-    otherParty: summary.otherPartyUsername,
-    latestMessage: summary.latestMessage,
-    messages,
-  });
-
-  // Single source of truth: chronologically last message
-  const lastMessage = pickLatestMessage(messages, summary.latestMessage);
-  const lastSenderUsername = lastMessage?.senderUsername?.trim() || undefined;
-
-  let lastSenderSide: InboxItem["lastSenderSide"] = "unknown";
-  if (lastSenderUsername) {
-    if (isSellerSide(lastSenderUsername, sellerUsernames)) {
-      lastSenderSide = "seller";
-    } else if (
-      sameUser(lastSenderUsername, buyer) ||
-      sellerUsernames.length > 0
-    ) {
-      // Not a known seller → treat as client
-      lastSenderSide = "client";
-    }
+  const selfUsername = resolveSelfUsername({ authUsername, listingSeller });
+  const participants = messages.flatMap((m) => [
+    m.senderUsername,
+    m.recipientUsername,
+  ]);
+  if (summary.latestMessage) {
+    participants.push(
+      summary.latestMessage.senderUsername,
+      summary.latestMessage.recipientUsername,
+    );
   }
 
+  const buyer = resolveClientUsername({
+    selfUsername,
+    otherPartyUsername: summary.otherPartyUsername,
+    participants,
+  });
+
+  const lastMessage = pickLatestMessage(messages, summary.latestMessage);
+  const lastSenderUsername = lastMessage?.senderUsername?.trim() || undefined;
+  const lastSenderSide = sideOfSender({
+    senderUsername: lastSenderUsername,
+    selfUsername,
+    clientUsername: buyer,
+  });
   const awaitingReply = lastSenderSide === "client";
   const unreadCount = summary.unreadCount ?? 0;
   const dateIso =
-    lastMessage?.createdDate ??
-    summary.modifiedDate ??
-    summary.createdDate;
+    lastMessage?.createdDate ?? summary.modifiedDate ?? summary.createdDate;
 
   return {
     conversationId,

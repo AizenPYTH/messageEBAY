@@ -6,7 +6,10 @@
 export { createDefaultAiEngine } from "../../../../src/ai/index";
 export {
   formatConversationDate,
+  isFromSelf,
   loadInboxItems,
+  resolveClientUsername,
+  resolveSelfUsername,
   sortMessagesChronologically,
 } from "../../../../src/conversations/index";
 export { buildAssistantContext } from "../../../../src/context/buildContext";

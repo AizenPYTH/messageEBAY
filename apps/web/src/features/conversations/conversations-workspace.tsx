@@ -394,27 +394,46 @@ export function ConversationsWorkspace() {
                 </div>
 
                 <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
-                  {detail.messages.map((message, index) => (
-                    <div
-                      key={message.messageId ?? `${index}-${message.createdDate}`}
-                      className={cn(
-                        "max-w-[90%] rounded-xl border px-3 py-2 text-sm",
-                        message.isFromSeller
-                          ? "ml-auto border-zinc-300 bg-zinc-900 text-white"
-                          : "border-border bg-card",
-                      )}
-                    >
+                  {detail.messages.map((message, index) => {
+                    const mine = message.isFromSeller;
+                    return (
                       <div
+                        key={
+                          message.messageId ?? `${index}-${message.createdDate}`
+                        }
                         className={cn(
-                          "mb-1 text-[11px]",
-                          message.isFromSeller ? "text-zinc-300" : "text-muted",
+                          "flex w-full",
+                          mine ? "justify-end" : "justify-start",
                         )}
                       >
-                        {message.senderUsername ?? "?"} · {message.dateLabel}
+                        <div
+                          className={cn(
+                            "max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm shadow-sm",
+                            mine
+                              ? "rounded-br-md bg-zinc-900 text-white"
+                              : "rounded-bl-md border border-zinc-200 bg-white text-zinc-900",
+                          )}
+                        >
+                          <div
+                            className={cn(
+                              "mb-1 text-[11px] font-semibold",
+                              mine ? "text-zinc-300" : "text-amber-700",
+                            )}
+                          >
+                            {mine
+                              ? `Vous (${message.senderUsername ?? detail.seller.username ?? "?"})`
+                              : `Client (${message.senderUsername ?? detail.buyer})`}
+                            <span className="ml-2 font-normal opacity-80">
+                              {message.dateLabel}
+                            </span>
+                          </div>
+                          <div className="whitespace-pre-wrap leading-relaxed">
+                            {message.body}
+                          </div>
+                        </div>
                       </div>
-                      <div className="whitespace-pre-wrap">{message.body}</div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </>
             ) : null}

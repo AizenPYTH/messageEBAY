@@ -4,9 +4,12 @@ import {
   createDefaultAiEngine,
   formatConversationDate,
   getAuthenticatedUsername,
+  isFromSelf,
   loadInboxItems,
   loadPromptSellerProfile,
   markEbayConnectionSynced,
+  resolveClientUsername,
+  resolveSelfUsername,
   sendConversationMessage,
   sortMessagesChronologically,
   syncConversationToDatabase,
@@ -89,10 +92,6 @@ export type ActionResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: string };
 
-function sameUser(a: string | undefined, b: string | undefined): boolean {
-  return Boolean(a && b && a.trim().toLowerCase() === b.trim().toLowerCase());
-}
-
 export async function fetchInboxList(): Promise<ActionResult<InboxListItemDto[]>> {
   ensureServerEnv();
   try {
@@ -128,27 +127,30 @@ export async function fetchConversationDetail(
       const ctx = await buildAssistantContext(conversationId);
       const authUsername = await getAuthenticatedUsername();
       const listingSeller = ctx.listing?.sellerUsername;
-      const sellerNames = [listingSeller, authUsername].filter(
-        (v): v is string => Boolean(v?.trim()),
-      );
-      const isSeller = (name: string | undefined) =>
-        sellerNames.some((seller) => sameUser(name, seller));
-
-      const sellerUsername = listingSeller || authUsername;
+      // Bubble side = token account only (never both auth + listing seller)
+      const selfUsername = resolveSelfUsername({ authUsername, listingSeller });
+      const sellerUsername = selfUsername;
       const sellerProfile = sellerUsername
         ? await loadPromptSellerProfile(sellerUsername)
-        : null;
+        : listingSeller
+          ? await loadPromptSellerProfile(listingSeller)
+          : null;
 
       const messagesSorted = sortMessagesChronologically(ctx.messages);
-      const parties = new Set<string>();
-      for (const m of messagesSorted) {
-        if (m.senderUsername) parties.add(m.senderUsername);
-        if (m.recipientUsername) parties.add(m.recipientUsername);
+      const participants = messagesSorted.flatMap((m) => [
+        m.senderUsername,
+        m.recipientUsername,
+      ]);
+      if (ctx.latestMessage) {
+        participants.push(
+          ctx.latestMessage.senderUsername,
+          ctx.latestMessage.recipientUsername,
+        );
       }
-      const buyer =
-        [...parties].find((name) => !isSeller(name)) ||
-        ctx.latestMessage?.senderUsername ||
-        "(acheteur inconnu)";
+      const buyer = resolveClientUsername({
+        selfUsername,
+        participants,
+      });
 
       const toDto = (m: (typeof messagesSorted)[number]): MessageDto => ({
         messageId: m.messageId,
@@ -157,7 +159,10 @@ export async function fetchConversationDetail(
         createdDate: m.createdDate,
         dateLabel: formatConversationDate(m.createdDate),
         body: m.messageBody?.trim() || "(vide)",
-        isFromSeller: isSeller(m.senderUsername),
+        isFromSeller: isFromSelf({
+          senderUsername: m.senderUsername,
+          selfUsername,
+        }),
       });
 
       const messages = messagesSorted.map(toDto);
