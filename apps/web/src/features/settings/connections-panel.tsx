@@ -140,6 +140,14 @@ export function ConnectionsPanel({
             </div>
           </dl>
 
+          {!authConfigured ? (
+            <p className="text-xs text-muted">
+              Mode test (sans login) : l’API utilise{" "}
+              <code>EBAY_USER_ACCESS_TOKEN</code> côté serveur. La liaison OAuth
+              par utilisateur reviendra quand l’auth sera réactivée.
+            </p>
+          ) : null}
+
           <div className="flex flex-wrap gap-2">
             <a href="/api/ebay/connect">
               <Button

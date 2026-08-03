@@ -1,5 +1,5 @@
 import { ConnectionsPanel } from "@/features/settings/connections-panel";
-import { isSupabaseAuthConfigured } from "@/lib/supabase/env";
+import { isAuthEnforced } from "@/server/auth";
 import { getCurrentEbayConnection } from "@/server/ebaySession";
 import { ensureServerEnv } from "@/server/env";
 
@@ -13,7 +13,8 @@ export default async function ConnectionsPage({ searchParams }: Props) {
   ensureServerEnv();
   const params = searchParams ? await searchParams : {};
   const connection = await getCurrentEbayConnection();
-  const authConfigured = isSupabaseAuthConfigured();
+  // OAuth-per-user needs app login; SKIP_AUTH uses server token instead
+  const authConfigured = isAuthEnforced();
 
   let flash: { type: "ok" | "error"; text: string } | null = null;
   if (params.connected === "1") {
