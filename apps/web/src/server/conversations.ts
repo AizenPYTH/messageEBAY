@@ -25,6 +25,7 @@ export type InboxListItemDto = {
   dateIso?: string;
   unreadCount: number;
   isNew: boolean;
+  awaitingReply: boolean;
   referenceId?: string;
 };
 
@@ -105,6 +106,7 @@ export async function fetchInboxList(): Promise<ActionResult<InboxListItemDto[]>
         dateIso: item.dateIso,
         unreadCount: item.unreadCount,
         isNew: item.isNew,
+        awaitingReply: item.awaitingReply,
         referenceId: item.referenceId,
       })),
     };

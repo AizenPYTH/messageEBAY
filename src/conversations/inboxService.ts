@@ -16,6 +16,8 @@ export type InboxItem = {
   dateLabel: string;
   unreadCount: number;
   isNew: boolean;
+  /** Last message is from the buyer — seller has not replied yet. */
+  awaitingReply: boolean;
   referenceId?: string;
   summary: EbayConversationSummary;
 };
@@ -154,6 +156,15 @@ async function enrichInboxItem(
     summary.createdDate;
 
   const unreadCount = summary.unreadCount ?? 0;
+  const lastMessage = messages[messages.length - 1] ?? summary.latestMessage;
+  const me = authUsername ?? listingSeller;
+  const lastFromBuyer = Boolean(
+    lastMessage?.senderUsername &&
+      (sameUser(lastMessage.senderUsername, buyer) ||
+        (me && !sameUser(lastMessage.senderUsername, me))),
+  );
+  // Priority: client wrote last (you have not replied yet)
+  const awaitingReply = lastFromBuyer || (unreadCount > 0 && !me);
 
   return {
     conversationId,
@@ -163,7 +174,8 @@ async function enrichInboxItem(
     dateIso,
     dateLabel: formatConversationDate(dateIso),
     unreadCount,
-    isNew: unreadCount > 0,
+    isNew: unreadCount > 0 || awaitingReply,
+    awaitingReply,
     ...(referenceId ? { referenceId } : {}),
     summary,
   };
@@ -185,5 +197,15 @@ export async function loadInboxItems(limit = 50): Promise<InboxItem[]> {
     ),
   );
 
-  return enriched.filter((item): item is InboxItem => item !== null);
+  const items = enriched.filter((item): item is InboxItem => item !== null);
+
+  // À répondre first, then already-replied — each group newest first
+  return items.sort((a, b) => {
+    if (a.awaitingReply !== b.awaitingReply) {
+      return a.awaitingReply ? -1 : 1;
+    }
+    const ta = Date.parse(a.dateIso ?? "");
+    const tb = Date.parse(b.dateIso ?? "");
+    return (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0);
+  });
 }

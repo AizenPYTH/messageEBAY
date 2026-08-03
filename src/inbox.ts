@@ -26,7 +26,8 @@ function printInboxList(items: InboxItem[]): void {
   }
 
   for (const [index, item] of items.entries()) {
-    console.log(`[${index + 1}] ${item.buyer}${item.isNew ? " · Nouveau" : ""}`);
+    const tag = item.awaitingReply ? " · À répondre" : " · Répondu";
+    console.log(`[${index + 1}] ${item.buyer}${tag}`);
     console.log(`Annonce : ${item.listingTitle}`);
     console.log(`Dernier message : ${item.lastMessagePreview}`);
     console.log(`Date : ${item.dateLabel}`);
