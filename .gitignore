@@ -1,0 +1,22 @@
+node_modules/
+dist/
+.env
+.env.local
+*.log
+.DS_Store
+
+# Next.js
+apps/web/.next/
+apps/web/out/
+apps/web/.env.local
+
+# Never commit accidental root-tsc emits inside the web app
+apps/web/**/*.js
+apps/web/**/*.js.map
+apps/web/**/*.d.ts
+apps/web/**/*.d.ts.map
+!apps/web/next-env.d.ts
+!apps/web/next.config.mjs
+
+# Vercel
+.vercel
