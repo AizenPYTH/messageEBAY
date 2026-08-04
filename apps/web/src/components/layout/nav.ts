@@ -1,9 +1,5 @@
 import type { ComponentType, SVGProps } from "react";
 import {
-  IconBug,
-  IconChart,
-  IconHistory,
-  IconLayoutDashboard,
   IconMessages,
   IconSettings,
   IconSparkles,
@@ -17,16 +13,12 @@ export type NavItem = {
   badge?: string;
 };
 
+/** Minimal seller-facing navigation — everything else stays reachable by URL if needed. */
 export const PRIMARY_NAV: NavItem[] = [
-  { href: "/dashboard", label: "Dashboard", icon: IconLayoutDashboard },
-  { href: "/conversations", label: "Conversations", icon: IconMessages },
-  { href: "/replies", label: "Réponses IA", icon: IconSparkles },
-  { href: "/seller-profile", label: "Seller Profile", icon: IconUser },
-  { href: "/history", label: "Historique", icon: IconHistory },
-  { href: "/stats", label: "Statistiques", icon: IconChart },
-  { href: "/settings/connections", label: "Paramètres", icon: IconSettings },
+  { href: "/conversations", label: "Messages", icon: IconMessages },
+  { href: "/train", label: "Entraîner", icon: IconSparkles },
+  { href: "/seller-profile", label: "Mon style", icon: IconUser },
+  { href: "/settings/connections", label: "Compte eBay", icon: IconSettings },
 ];
 
-export const DEV_NAV: NavItem[] = [
-  { href: "/debug", label: "Debug", icon: IconBug, badge: "dev" },
-];
+export const DEV_NAV: NavItem[] = [];

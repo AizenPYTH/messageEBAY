@@ -6,8 +6,8 @@ export const dynamic = "force-dynamic";
 export default function ConversationsPage() {
   return (
     <AppShell
-      title="Conversations"
-      description="Messagerie eBay + AI Engine — sans terminal"
+      title="Messages"
+      description="Répondez aux clients — l’IA propose, vous validez"
     >
       <ConversationsWorkspace />
     </AppShell>

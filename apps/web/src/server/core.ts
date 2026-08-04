@@ -42,8 +42,10 @@ export {
 } from "../../../../src/ebay/oauth";
 export { sendConversationMessage } from "../../../../src/ebay/sendMessage";
 export { runWithEbayTokenAsync } from "../../../../src/ebay/tokenContext";
+export { indexPendingMessageEmbeddings } from "../../../../src/rag/index";
 export {
   getSellerProfileBundle,
   initDefaultSellerProfile,
   loadPromptSellerProfile,
 } from "../../../../src/seller/index";
+

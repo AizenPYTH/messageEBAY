@@ -9,8 +9,8 @@ export default async function SellerProfilePage() {
 
   return (
     <AppShell
-      title="Seller Profile"
-      description="Ton, signature et politiques vendeur"
+      title="Mon style"
+      description="Comment l’assistant doit vous parler aux clients"
     >
       <SellerProfileForm
         initial={result.ok ? result.data : null}
