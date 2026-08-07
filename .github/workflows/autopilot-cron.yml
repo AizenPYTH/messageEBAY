@@ -1,0 +1,25 @@
+# Pings the production autopilot endpoint every 15 minutes.
+# Requires repo secret: CRON_SECRET (same value as Vercel CRON_SECRET).
+name: Autopilot cron
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Message AI autopilot
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "Missing CRON_SECRET secret"
+            exit 1
+          fi
+          curl -sS -f \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "https://message-ai-web.vercel.app/api/cron/autopilot"
+          echo ""
