@@ -19,7 +19,25 @@ jobs:
             echo "Missing CRON_SECRET secret"
             exit 1
           fi
-          curl -sS -f \
+          # Hobby Vercel ~60s; allow a bit more curl wait, show body on failure
+          set +e
+          BODY=$(curl -sS -w "\nHTTP:%{http_code}" --max-time 90 \
             -H "Authorization: Bearer ${CRON_SECRET}" \
-            "https://message-ai-web.vercel.app/api/cron/autopilot"
-          echo ""
+            "https://message-ai-web.vercel.app/api/cron/autopilot")
+          CODE=$(echo "$BODY" | sed -n 's/^HTTP://p')
+          TEXT=$(echo "$BODY" | sed '/^HTTP:/d')
+          echo "$TEXT"
+          echo "http_status=$CODE"
+          if [ "$CODE" = "200" ]; then
+            exit 0
+          fi
+          # 504 = timed out mid-run; retry once with smaller chance of backlog
+          if [ "$CODE" = "504" ] || [ "$CODE" = "500" ]; then
+            echo "Retrying once after timeout/error..."
+            sleep 5
+            curl -sS -f --max-time 90 \
+              -H "Authorization: Bearer ${CRON_SECRET}" \
+              "https://message-ai-web.vercel.app/api/cron/autopilot"
+            exit $?
+          fi
+          exit 1
