@@ -1,5 +1,23 @@
 import { config } from "../config.js";
-import { allTagPairs, firstTag, stripHtml } from "./xml.js";
+import { allBlocks, allTagPairs, firstTag, stripHtml } from "./xml.js";
+
+export type ListingVariation = {
+  sku?: string;
+  quantity: number;
+  quantitySold: number;
+  quantityAvailable: number;
+  price?: string;
+  specifics: Array<{ name: string; value: string }>;
+};
+
+export type ListingShippingOption = {
+  service?: string;
+  cost?: string;
+  timeMin?: string;
+  timeMax?: string;
+  /** InternationalShippingServiceOption vs domestic ShippingServiceOptions. */
+  international?: boolean;
+};
 
 export type ListingDetails = {
   itemId: string;
@@ -13,9 +31,14 @@ export type ListingDetails = {
   currency?: string;
   quantity?: string;
   quantitySold?: string;
+  /** Remaining stock at listing level (Quantity - QuantitySold), when known. */
+  quantityAvailable?: number;
   listingStatus?: string;
   location?: string;
   itemSpecifics: Array<{ name: string; value: string }>;
+  /** Multi-SKU / model / color variations with per-variant stock. */
+  variations: ListingVariation[];
+  shippingOptions: ListingShippingOption[];
   sellerUsername?: string;
   sellerFeedbackScore?: string;
   returnsAccepted?: string;
@@ -33,6 +56,124 @@ function tradingEndpoint(): string {
   return config.env === "production"
     ? "https://api.ebay.com/ws/api.dll"
     : "https://api.sandbox.ebay.com/ws/api.dll";
+}
+
+function toInt(value: string | undefined): number | undefined {
+  if (value === undefined || value === "") return undefined;
+  const n = Number.parseInt(value, 10);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function parseVariations(variationsXml: string | undefined): ListingVariation[] {
+  if (!variationsXml) return [];
+  const out: ListingVariation[] = [];
+  for (const block of allBlocks(variationsXml, "Variation")) {
+    const qty = toInt(firstTag(block, "Quantity")) ?? 0;
+    const sold =
+      toInt(firstTag(firstTag(block, "SellingStatus") ?? block, "QuantitySold")) ??
+      toInt(firstTag(block, "QuantitySold")) ??
+      0;
+    const available = Math.max(0, qty - sold);
+    const specificsBlock =
+      firstTag(block, "VariationSpecifics") ?? block;
+    const specifics = allTagPairs(specificsBlock, "Name", "Value");
+    out.push({
+      sku: firstTag(block, "SKU"),
+      quantity: qty,
+      quantitySold: sold,
+      quantityAvailable: available,
+      price: firstTag(block, "StartPrice") ?? firstTag(block, "CurrentPrice"),
+      specifics,
+    });
+  }
+  return out;
+}
+
+function parseShippingOptions(itemXml: string): ListingShippingOption[] {
+  const details = firstTag(itemXml, "ShippingDetails");
+  if (!details) return [];
+  const options: ListingShippingOption[] = [];
+  for (const block of allBlocks(details, "ShippingServiceOptions")) {
+    options.push({
+      service: firstTag(block, "ShippingService"),
+      cost: firstTag(block, "ShippingServiceCost"),
+      timeMin: firstTag(block, "ShippingTimeMin"),
+      timeMax: firstTag(block, "ShippingTimeMax"),
+      international: false,
+    });
+  }
+  for (const block of allBlocks(details, "InternationalShippingServiceOption")) {
+    options.push({
+      service: firstTag(block, "ShippingService"),
+      cost: firstTag(block, "ShippingServiceCost"),
+      timeMin: firstTag(block, "ShippingTimeMin"),
+      timeMax: firstTag(block, "ShippingTimeMax"),
+      international: true,
+    });
+  }
+  return options.slice(0, 8);
+}
+
+/** Exported for tests — parse GetItem success XML into ListingDetails. */
+export function parseGetItemListing(xml: string, itemId: string): ListingDetails {
+  const itemXml = firstTag(xml, "Item") ?? xml;
+  const descriptionXml = firstTag(itemXml, "Description");
+  const descriptionText = descriptionXml
+    ? stripHtml(descriptionXml)
+    : undefined;
+
+  const price =
+    firstTag(itemXml, "CurrentPrice") ||
+    firstTag(itemXml, "StartPrice") ||
+    firstTag(itemXml, "BuyItNowPrice");
+
+  const quantity = firstTag(itemXml, "Quantity");
+  const sellingStatus = firstTag(itemXml, "SellingStatus");
+  const quantitySold =
+    firstTag(sellingStatus ?? "", "QuantitySold") ||
+    firstTag(itemXml, "QuantitySold");
+  const qtyN = toInt(quantity);
+  const soldN = toInt(quantitySold) ?? 0;
+  const quantityAvailable =
+    qtyN !== undefined ? Math.max(0, qtyN - soldN) : undefined;
+
+  const itemSpecificsXml = firstTag(itemXml, "ItemSpecifics");
+  const itemSpecifics = itemSpecificsXml
+    ? allTagPairs(itemSpecificsXml, "Name", "Value")
+    : allTagPairs(itemXml, "Name", "Value").slice(0, 40);
+
+  const variations = parseVariations(firstTag(itemXml, "Variations"));
+  // If variations exist, listing-level available = sum of in-stock variants.
+  const variationAvailable = variations.length
+    ? variations.reduce((sum, v) => sum + v.quantityAvailable, 0)
+    : undefined;
+
+  return {
+    itemId: firstTag(itemXml, "ItemID") || itemId,
+    title: firstTag(itemXml, "Title"),
+    descriptionText,
+    categoryId: firstTag(itemXml, "CategoryID"),
+    categoryName: firstTag(itemXml, "CategoryName"),
+    condition: firstTag(itemXml, "ConditionDisplayName"),
+    conditionId: firstTag(itemXml, "ConditionID"),
+    price,
+    currency: firstTag(itemXml, "Currency"),
+    quantity,
+    quantitySold,
+    quantityAvailable: variationAvailable ?? quantityAvailable,
+    listingStatus: firstTag(itemXml, "ListingStatus"),
+    location: firstTag(itemXml, "Location"),
+    itemSpecifics,
+    variations,
+    shippingOptions: parseShippingOptions(itemXml),
+    sellerUsername: firstTag(itemXml, "UserID"),
+    sellerFeedbackScore: firstTag(itemXml, "FeedbackScore"),
+    returnsAccepted: firstTag(itemXml, "ReturnsAcceptedOption"),
+    returnsWithin: firstTag(itemXml, "ReturnsWithinOption"),
+    shippingCostPaidBy: firstTag(itemXml, "ShippingCostPaidByOption"),
+    dispatchTimeMax: firstTag(itemXml, "DispatchTimeMax"),
+    rawAvailable: true,
+  };
 }
 
 export async function getListingDetails(
@@ -65,7 +206,7 @@ export async function getListingDetails(
 
   const xml = await response.text();
   const ack = firstTag(xml, "Ack");
-  if (!response.ok || ack !== "Success") {
+  if (!response.ok || (ack !== "Success" && ack !== "Warning")) {
     const shortMsg = firstTag(xml, "ShortMessage");
     const longMsg = firstTag(xml, "LongMessage");
     return {
@@ -74,39 +215,5 @@ export async function getListingDetails(
     };
   }
 
-  const descriptionXml = firstTag(xml, "Description");
-  const descriptionText = descriptionXml
-    ? stripHtml(descriptionXml)
-    : undefined;
-
-  const price =
-    firstTag(xml, "CurrentPrice") ||
-    firstTag(xml, "StartPrice") ||
-    firstTag(xml, "BuyItNowPrice");
-
-  const listing: ListingDetails = {
-    itemId: firstTag(xml, "ItemID") || itemId,
-    title: firstTag(xml, "Title"),
-    descriptionText,
-    categoryId: firstTag(xml, "CategoryID"),
-    categoryName: firstTag(xml, "CategoryName"),
-    condition: firstTag(xml, "ConditionDisplayName"),
-    conditionId: firstTag(xml, "ConditionID"),
-    price,
-    currency: firstTag(xml, "Currency"),
-    quantity: firstTag(xml, "Quantity"),
-    quantitySold: firstTag(xml, "QuantitySold"),
-    listingStatus: firstTag(xml, "ListingStatus"),
-    location: firstTag(xml, "Location"),
-    itemSpecifics: allTagPairs(xml, "Name", "Value"),
-    sellerUsername: firstTag(xml, "UserID"),
-    sellerFeedbackScore: firstTag(xml, "FeedbackScore"),
-    returnsAccepted: firstTag(xml, "ReturnsAcceptedOption"),
-    returnsWithin: firstTag(xml, "ReturnsWithinOption"),
-    shippingCostPaidBy: firstTag(xml, "ShippingCostPaidByOption"),
-    dispatchTimeMax: firstTag(xml, "DispatchTimeMax"),
-    rawAvailable: true,
-  };
-
-  return { ok: true, listing };
+  return { ok: true, listing: parseGetItemListing(xml, itemId) };
 }

@@ -67,3 +67,15 @@ export async function initDefaultSellerProfile(
     promptProfile: mapSellerProfileRowToPrompt(profile),
   };
 }
+
+/** Refresh style/rules from the Snowolf ChatGPT playbook without wiping seller id. */
+export async function applySnowolfPlaybook(
+  username: string,
+): Promise<SellerProfileBundle> {
+  const existing = await getSellerProfileBundle(username);
+  const displayName =
+    existing?.profile.display_name?.trim() ||
+    existing?.seller.username ||
+    username;
+  return initDefaultSellerProfile(username, displayName);
+}

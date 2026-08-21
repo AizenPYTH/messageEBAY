@@ -1,4 +1,6 @@
 import { detectLanguage } from "../prompt/detectLanguage.js";
+import { isTrackingRequest } from "../shipping/detectTracking.js";
+import { detectEscalation } from "./escalation.js";
 import type {
   DetailLevel,
   QuestionIntent,
@@ -17,6 +19,9 @@ const SIMPLE_CLOSED_PATTERNS: RegExp[] = [
   /\bazerty\b/i,
   /\bqwerty\b/i,
   /\bcompatible\b/i,
+  /\bg[ée]n[ée]rique\b/i,
+  /\bgeneric\b/i,
+  /\bofficiel(?:le)?\b/i,
   /\bd[ée]bloqu[ée]\b/i,
   /\b[ée]tat\b/i,
   /\bprix\s*ferme\b/i,
@@ -44,7 +49,7 @@ const NEGOTIATION_PATTERNS: RegExp[] = [
 ];
 
 const RETURN_PATTERNS: RegExp[] = [
-  /\bretour\b/i,
+  /\bretourn/i,
   /\brembours/i,
   /\breturn\b/i,
   /\brefund\b/i,
@@ -81,6 +86,7 @@ const INTENT_LABELS: Record<QuestionIntent, string> = {
   negotiation: "demande de négociation",
   return_request: "demande de retour/remboursement",
   after_sales: "demande SAV",
+  shipping_tracking: "suivi de colis",
   multi_question: "questions multiples",
   other: "autre",
 };
@@ -111,7 +117,7 @@ function pickIntent(input: {
   const { text, questionCount, words } = input;
   const reasons: string[] = [];
 
-  if (questionCount >= 2) {
+  if (questionCount >= 2 && !matchesAny(text, RETURN_PATTERNS)) {
     reasons.push(`${questionCount} questions détectées`);
     return { intent: "multi_question", reasons };
   }
@@ -134,6 +140,11 @@ function pickIntent(input: {
   if (matchesAny(text, RETURN_PATTERNS)) {
     reasons.push("indices retour/remboursement");
     return { intent: "return_request", reasons };
+  }
+
+  if (isTrackingRequest(text)) {
+    reasons.push("demande de suivi / localisation colis");
+    return { intent: "shipping_tracking", reasons };
   }
 
   if (matchesAny(text, AFTER_SALES_PATTERNS)) {
@@ -176,7 +187,7 @@ function planLength(intent: QuestionIntent, isSimple: boolean): {
     case "thanks":
       return {
         recommendedLength: "very_short",
-        maxWords: 30,
+        maxWords: 20,
         detailLevel: "minimal",
         avoidListingRecap: true,
         compactListingContext: true,
@@ -184,8 +195,16 @@ function planLength(intent: QuestionIntent, isSimple: boolean): {
     case "closed_question":
       return {
         recommendedLength: "very_short",
-        maxWords: 40,
+        maxWords: 35,
         detailLevel: "minimal",
+        avoidListingRecap: true,
+        compactListingContext: true,
+      };
+    case "shipping_tracking":
+      return {
+        recommendedLength: "short",
+        maxWords: 45,
+        detailLevel: "focused",
         avoidListingRecap: true,
         compactListingContext: true,
       };
@@ -194,7 +213,7 @@ function planLength(intent: QuestionIntent, isSimple: boolean): {
     case "after_sales":
       return {
         recommendedLength: "short",
-        maxWords: 80,
+        maxWords: 55,
         detailLevel: "focused",
         avoidListingRecap: true,
         compactListingContext: true,
@@ -202,7 +221,7 @@ function planLength(intent: QuestionIntent, isSimple: boolean): {
     case "multi_question":
       return {
         recommendedLength: "medium",
-        maxWords: 120,
+        maxWords: 90,
         detailLevel: "focused",
         avoidListingRecap: true,
         compactListingContext: false,
@@ -210,7 +229,7 @@ function planLength(intent: QuestionIntent, isSimple: boolean): {
     case "technical":
       return {
         recommendedLength: "long",
-        maxWords: 150,
+        maxWords: 110,
         detailLevel: "detailed",
         avoidListingRecap: false,
         compactListingContext: false,
@@ -218,7 +237,7 @@ function planLength(intent: QuestionIntent, isSimple: boolean): {
     case "information_request":
       return {
         recommendedLength: isSimple ? "short" : "medium",
-        maxWords: isSimple ? 60 : 110,
+        maxWords: isSimple ? 40 : 80,
         detailLevel: isSimple ? "focused" : "detailed",
         avoidListingRecap: true,
         compactListingContext: isSimple,
@@ -226,7 +245,7 @@ function planLength(intent: QuestionIntent, isSimple: boolean): {
     default:
       return {
         recommendedLength: "short",
-        maxWords: 80,
+        maxWords: 50,
         detailLevel: "focused",
         avoidListingRecap: true,
         compactListingContext: true,
@@ -257,6 +276,10 @@ export function analyzeMessage(text: string | undefined): ResponsePlan {
     intent === "thanks";
 
   const lengthPlan = planLength(intent, isSimpleQuestion);
+  const escalation = detectEscalation(raw);
+  if (escalation.needsSellerIntervention && escalation.reasonLabel) {
+    reasons.push(`escalade: ${escalation.reasonLabel}`);
+  }
 
   return {
     intent,
@@ -269,9 +292,14 @@ export function analyzeMessage(text: string | undefined): ResponsePlan {
     detailLevel: lengthPlan.detailLevel,
     avoidListingRecap: lengthPlan.avoidListingRecap,
     compactListingContext: lengthPlan.compactListingContext,
-    languageCode: language.code,
-    languageLabel: language.label,
+    languageCode: language.code === "unknown" ? "fr" : language.code,
+    languageLabel: language.code === "unknown" ? "français" : language.label,
     reasons,
+    needsSellerIntervention: escalation.needsSellerIntervention,
+    ...(escalation.reason ? { escalationReason: escalation.reason } : {}),
+    ...(escalation.reasonLabel
+      ? { escalationLabel: escalation.reasonLabel }
+      : {}),
   };
 }
 

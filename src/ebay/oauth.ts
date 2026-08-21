@@ -1,4 +1,9 @@
-import { config, ebayUrls, MESSAGE_SCOPE } from "../config.js";
+import {
+  config,
+  ebayUrls,
+  MESSAGE_SCOPE,
+  OAUTH_SCOPES,
+} from "../config.js";
 
 export type EbayTokenSet = {
   access_token: string;
@@ -11,7 +16,7 @@ export function buildAuthorizeUrl(state?: string): string {
   url.searchParams.set("client_id", config.clientId);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("redirect_uri", config.ruName);
-  url.searchParams.set("scope", MESSAGE_SCOPE);
+  url.searchParams.set("scope", OAUTH_SCOPES);
   if (state) {
     url.searchParams.set("state", state);
   }
@@ -88,9 +93,9 @@ export async function refreshAccessToken(
   const body = new URLSearchParams({
     grant_type: "refresh_token",
     refresh_token: refreshToken,
-    scope: MESSAGE_SCOPE,
+    scope: OAUTH_SCOPES,
   });
   return tokenRequest(body);
 }
 
-export { MESSAGE_SCOPE };
+export { MESSAGE_SCOPE, OAUTH_SCOPES };

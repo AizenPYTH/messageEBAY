@@ -47,6 +47,8 @@ export type PromptEngineInput = {
   maxMessages?: number;
   /** Max description characters in the prompt. */
   maxDescriptionChars?: number;
+  /** Buyer messages since last seller reply — answer all of them. */
+  pendingBuyerMessages?: import("../ebay/messageApi.js").EbayMessage[];
 };
 
 export type BuiltPrompt = {

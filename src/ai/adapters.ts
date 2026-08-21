@@ -3,6 +3,7 @@ import {
   analyzeMessage,
   enrichResponsePlanWithListing,
 } from "../analysis/index.js";
+import { searchSellerCatalogLive } from "../catalog/index.js";
 import { buildAssistantContext } from "../context/buildContext.js";
 import { buildPrompt, DEFAULT_PROMPT_MODEL } from "../prompt/buildPrompt.js";
 import {
@@ -10,6 +11,7 @@ import {
   toPromptSimilarSnippets,
 } from "../rag/index.js";
 import { loadPromptSellerProfile } from "../seller/profileService.js";
+import { resolveShipment } from "../shipping/index.js";
 import { createAiEngine } from "./engine.js";
 import type { AiEngine, AiEngineDeps, LlmCompletionResult } from "./types.js";
 
@@ -67,6 +69,9 @@ export function createDefaultAiEngineDeps(
     toPromptSimilarSnippets,
     buildPrompt,
     completeChat,
+    resolveShipment: ({ conversationId, itemId }) =>
+      resolveShipment({ conversationId, itemId }),
+    searchCatalog: (input) => searchSellerCatalogLive(input),
     defaultModel: DEFAULT_PROMPT_MODEL,
     ...overrides,
   };

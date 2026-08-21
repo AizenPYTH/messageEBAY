@@ -71,3 +71,10 @@ export const ebayUrls = {
 /** Scope required for Commerce Message API */
 export const MESSAGE_SCOPE =
   "https://api.ebay.com/oauth/api_scope/commerce.message";
+
+/** Read-only orders / shipping fulfillments (optional enhancement for tracking). */
+export const FULFILLMENT_SCOPE =
+  "https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly";
+
+/** Scopes requested at OAuth connect time (space-separated). */
+export const OAUTH_SCOPES = [MESSAGE_SCOPE, FULFILLMENT_SCOPE].join(" ");

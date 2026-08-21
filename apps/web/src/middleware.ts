@@ -9,12 +9,10 @@ export const config = {
   matcher: [
     "/dashboard/:path*",
     "/conversations/:path*",
-    "/replies/:path*",
+    "/reports/:path*",
+    "/train/:path*",
     "/seller-profile/:path*",
-    "/history/:path*",
-    "/stats/:path*",
     "/settings/:path*",
-    "/debug/:path*",
     "/login",
   ],
 };

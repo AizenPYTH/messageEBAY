@@ -14,15 +14,18 @@ export function sameUsername(
 }
 
 /**
- * "Vous" in the UI = the eBay account tied to the access token.
- * Do NOT include listing seller when it differs (test / multi-account cases
- * otherwise paint every bubble as seller).
+ * "Vous" in the UI = the eBay account tied to the access token only.
+ * Never treat listing seller as self when auth is known — that painted
+ * both sides as "Vous" in multi-account / test threads.
  */
 export function resolveSelfUsername(input: {
   authUsername?: string;
   listingSeller?: string;
 }): string | undefined {
-  return input.authUsername?.trim() || input.listingSeller?.trim() || undefined;
+  const auth = input.authUsername?.trim();
+  if (auth) return auth;
+  // Last resort only when GetUser failed (otherwise sides flip wrongly).
+  return input.listingSeller?.trim() || undefined;
 }
 
 export function resolveClientUsername(input: {
@@ -68,4 +71,44 @@ export function isFromSelf(input: {
   selfUsername?: string;
 }): boolean {
   return sameUsername(input.senderUsername, input.selfUsername);
+}
+
+/**
+ * True when the logged-in eBay account is the listing seller.
+ * When false, we are the buyer (or role unknown) — do not create seller alerts.
+ */
+export function isOwnListing(input: {
+  authUsername?: string;
+  listingSeller?: string;
+}): boolean {
+  return sameUsername(input.authUsername, input.listingSeller);
+}
+
+/** Latest message body only if it was sent by the other party (not us). */
+export function latestIncomingBuyerText(input: {
+  messages: Array<{
+    senderUsername?: string;
+    messageBody?: string;
+    createdDate?: string;
+  }>;
+  selfUsername?: string;
+}): string | undefined {
+  const sorted = [...input.messages].sort((a, b) => {
+    const ta = a.createdDate ? Date.parse(a.createdDate) : 0;
+    const tb = b.createdDate ? Date.parse(b.createdDate) : 0;
+    return (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0);
+  });
+  for (const message of sorted) {
+    if (
+      isFromSelf({
+        senderUsername: message.senderUsername,
+        selfUsername: input.selfUsername,
+      })
+    ) {
+      continue;
+    }
+    const body = message.messageBody?.trim();
+    if (body) return body;
+  }
+  return undefined;
 }

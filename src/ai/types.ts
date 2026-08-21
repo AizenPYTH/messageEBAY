@@ -9,6 +9,7 @@ import type {
   SimilarConversationSnippet,
 } from "../prompt/types.js";
 import type { SimilarConversationExample } from "../rag/types.js";
+import type { ShipmentResolution } from "../shipping/types.js";
 
 export type TokenUsage = {
   promptTokens?: number;
@@ -47,6 +48,28 @@ export type AiEngineDeps = {
   ) => SimilarConversationSnippet[];
   buildPrompt: (input: PromptEngineInput) => BuiltPrompt;
   completeChat: (request: LlmCompletionRequest) => Promise<LlmCompletionResult>;
+  /** Resolve eBay shipment / tracking for a conversation (optional). */
+  resolveShipment?: (input: {
+    conversationId: string;
+    itemId?: string;
+  }) => Promise<ShipmentResolution>;
+  /** Search seller catalog (all active listings + stock). */
+  searchCatalog?: (input: {
+    sellerUsername: string;
+    message: string;
+    excludeItemId?: string;
+    limit?: number;
+  }) => Promise<
+    Array<{
+      itemId: string;
+      title: string;
+      quantityAvailable: number;
+      itemUrl: string;
+      matchedVariationLabel?: string;
+      matchedVariationQty?: number;
+      score: number;
+    }>
+  >;
   defaultModel: string;
 };
 
@@ -75,6 +98,10 @@ export type AiEngineResult = {
   userPrompt: string;
   model: string;
   reply: string;
+  /** True when no auto-reply was generated — seller must intervene. */
+  escalated?: boolean;
+  /** Shipment / tracking resolution when buyer asked about the package. */
+  shipment?: ShipmentResolution;
   metadata: {
     languageCode: string;
     languageLabel: string;
@@ -88,6 +115,8 @@ export type AiEngineResult = {
     recommendedLength: string;
     detailLevel: string;
     maxWords: number;
+    currentAskFingerprints?: string[];
+    currentAskText?: string;
   };
   tokenUsage?: TokenUsage;
   latencyMs: number;

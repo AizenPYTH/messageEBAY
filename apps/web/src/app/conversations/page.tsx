@@ -7,7 +7,8 @@ export default function ConversationsPage() {
   return (
     <AppShell
       title="Messages"
-      description="Répondez aux clients — l’IA propose, vous validez"
+      description="L’IA propose — vous validez avant envoi"
+      flush
     >
       <ConversationsWorkspace />
     </AppShell>

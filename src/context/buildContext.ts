@@ -4,6 +4,11 @@ import {
   type EbayMessage,
 } from "../ebay/messageApi.js";
 import { getListingDetails, type ListingDetails } from "../ebay/tradingApi.js";
+import {
+  findCatalogListingByTitle,
+  getCatalogListingTitle,
+} from "../database/repositories/listings.js";
+import { collectCandidateItemIds } from "../ebay/resolveListingRef.js";
 
 const DESCRIPTION_MAX_CHARS = 4000;
 
@@ -130,45 +135,83 @@ export async function buildAssistantContext(
   conversationId: string,
 ): Promise<AssistantContext> {
   const notes: string[] = [
-    "Source annonce: Trading API GetItem (via referenceId LISTING de Message API).",
-    "Browse API non utilisée ici: scope buy.browse absent du token actuel.",
-    "Champ RefundOption parfois absent de GetItem — non inventé.",
+    "Source annonce: Trading API GetItem (referenceId, lien itm, ou titre catalogue).",
   ];
 
-  const summary = await findConversationSummary(conversationId);
   const detail = await getConversationMessages(conversationId, "FROM_MEMBERS");
   const messages = sortMessagesChronologically(detail.messages ?? []);
   const latestMessage = messages[messages.length - 1];
 
+  const needListLookup = !detail.referenceId || !detail.conversationTitle;
+  const summary = needListLookup
+    ? await findConversationSummary(conversationId)
+    : undefined;
+  const conversationTitle =
+    detail.conversationTitle?.trim() || summary?.conversationTitle?.trim();
+
   let listing: ListingDetails | undefined;
   let listingError: string | undefined;
-  let listingItemId = summary?.referenceId;
+
+  const candidates = collectCandidateItemIds({
+    conversationId,
+    referenceId: detail.referenceId || summary?.referenceId,
+    referenceType: detail.referenceType || summary?.referenceType,
+    conversationTitle,
+    messageBodies: messages.map((m) => m.messageBody),
+  });
 
   if (!summary) {
     notes.push(
-      "Conversation absente de GET /conversation (liste). referenceId peut être manquant.",
+      "Conversation absente des premières pages GET /conversation — id cherché aussi dans le détail / messages.",
     );
   }
 
-  if (summary?.referenceType && summary.referenceType !== "LISTING") {
-    notes.push(
-      `referenceType=${summary.referenceType} (attendu LISTING).`,
-    );
+  const refType = detail.referenceType || summary?.referenceType;
+  if (refType && refType !== "LISTING") {
+    notes.push(`referenceType=${refType} (pas LISTING) — autres sources utilisées.`);
   }
 
-  if (!listingItemId) {
-    listingError =
-      "Aucun referenceId LISTING dans la conversation Message API. Impossible de charger l'annonce automatiquement.";
-    notes.push(
-      "Alternative: passer manuellement un itemId plus tard, ou lier la conversation à une annonce côté eBay.",
-    );
-  } else {
-    const result = await getListingDetails(listingItemId);
-    if (result.ok) {
-      listing = result.listing;
-    } else {
-      listingError = result.reason;
+  async function loadByItemId(itemId: string): Promise<ListingDetails | undefined> {
+    const result = await getListingDetails(itemId);
+    if (result.ok) return result.listing;
+    const catalogTitle = await getCatalogListingTitle(itemId);
+    if (!catalogTitle) return undefined;
+    notes.push(`Titre catalogue local (GetItem: ${result.reason}).`);
+    return {
+      itemId,
+      title: catalogTitle,
+      itemSpecifics: [],
+      variations: [],
+      shippingOptions: [],
+      rawAvailable: true,
+    };
+  }
+
+  let listingItemId = candidates[0];
+  for (const id of candidates) {
+    const loaded = await loadByItemId(id);
+    if (loaded) {
+      listing = loaded;
+      listingItemId = id;
+      break;
     }
+  }
+
+  if (!listing && conversationTitle) {
+    const byTitle = await findCatalogListingByTitle(conversationTitle);
+    if (byTitle?.item_id) {
+      listingItemId = byTitle.item_id;
+      listing = await loadByItemId(byTitle.item_id);
+      if (listing) {
+        notes.push("Annonce retrouvée via le titre de conversation (catalogue).");
+      }
+    }
+  }
+
+  if (!listing) {
+    listingError = listingItemId
+      ? `Annonce ${listingItemId} introuvable (GetItem + catalogue).`
+      : "Aucun identifiant d'annonce dans cette conversation (pas de référence eBay, lien itm, ni titre catalogue).";
   }
 
   const listingSection = buildListingSection(listing, listingError, notes);

@@ -15,6 +15,26 @@ export type ListingRow = {
   currency: string | null;
   category: string | null;
   condition: string | null;
+  quantity_available?: number | null;
+  listing_status?: string | null;
+  dispatch_time_max?: string | null;
+  item_url?: string | null;
+  sku?: string | null;
+  search_text?: string | null;
+  synced_at?: string | null;
+  source?: string | null;
+  updated_at: string;
+};
+
+export type ListingVariationRow = {
+  id: string;
+  listing_id: string;
+  sku: string | null;
+  specifics: Array<{ name: string; value: string }>;
+  quantity_available: number;
+  price: number | null;
+  search_text: string | null;
+  created_at: string;
   updated_at: string;
 };
 
@@ -64,6 +84,23 @@ export type UpsertListingInput = {
   currency?: string | null;
   category?: string | null;
   condition?: string | null;
+  quantityAvailable?: number | null;
+  listingStatus?: string | null;
+  dispatchTimeMax?: string | null;
+  itemUrl?: string | null;
+  sku?: string | null;
+  searchText?: string | null;
+  syncedAt?: string | null;
+  source?: string | null;
+};
+
+export type UpsertListingVariationInput = {
+  listingId: string;
+  sku?: string | null;
+  specifics: Array<{ name: string; value: string }>;
+  quantityAvailable: number;
+  price?: number | null;
+  searchText?: string | null;
 };
 
 export type UpsertConversationInput = {
@@ -127,6 +164,10 @@ export type AppProfileRow = {
   id: string;
   email: string | null;
   display_name: string | null;
+  autopilot_enabled?: boolean;
+  autopilot_updated_at?: string | null;
+  autopilot_last_run_at?: string | null;
+  autopilot_last_run_summary?: string | null;
   created_at: string;
   updated_at: string;
 };

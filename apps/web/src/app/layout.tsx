@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "eBay AI — Seller Assistant",
-  description: "Assistant IA pour vendeurs eBay",
+  title: "Message AI — Assistant vendeur",
+  description: "Assistant IA pour vendeurs eBay — messages, style, rapports",
 };
 
 export default function RootLayout({

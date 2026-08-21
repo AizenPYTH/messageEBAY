@@ -1,9 +1,10 @@
 import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 import { buildAuthorizeUrl } from "@/server/core";
-import { ensureAppProfileForUser, resolveActor } from "@/server/auth";
-import { isEbayLinkReady } from "@/server/guestSession";
+import { resolveActor } from "@/server/auth";
+import { applyGuestCookie, isEbayLinkReady } from "@/server/guestSession";
 import { ensureServerEnv } from "@/server/env";
+import { isAuthSkipped } from "@/lib/auth-mode";
 
 const STATE_COOKIE = "ebay_oauth_state";
 const COOKIE_MAX_AGE = 60 * 10;
@@ -20,12 +21,15 @@ export async function GET(request: Request) {
 
   try {
     const user = await resolveActor();
-    await ensureAppProfileForUser(user);
+    // Profile already upserted in resolveActor / getOrCreateGuestUser (best-effort retries).
 
     const state = randomBytes(24).toString("hex");
     const authorizeUrl = buildAuthorizeUrl(state);
 
     const response = NextResponse.redirect(authorizeUrl);
+    if (isAuthSkipped()) {
+      applyGuestCookie(response, user.id);
+    }
     response.cookies.set(STATE_COOKIE, state, {
       httpOnly: true,
       sameSite: "lax",

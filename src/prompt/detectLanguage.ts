@@ -14,22 +14,43 @@ const FRENCH_HINTS = [
   "retour",
   "prix",
   "bonjour,",
+  "juste",
+  "partout",
+  "toujours",
+  "dispo",
+  "disponible",
+  "recharger",
+  "recharge",
+  "fonctionne",
+  "fonctionnelle",
+  "combien",
+  "cout",
+  "coût",
+  "d'accord",
+  "accord",
+  "elle",
+  "est",
+  "pas",
+  "oui",
+  "non",
 ];
 
+// Avoid shared words (compatible, return…) — they flip FR→EN wrongly.
 const ENGLISH_HINTS = [
   "hello",
-  "hi",
+  "hi ",
   "thanks",
   "please",
   "shipping",
   "delivery",
-  "return",
   "order",
   "price",
-  "compatible",
   "working",
   "does it",
   "can you",
+  "how much",
+  "is it",
+  "everywhere",
 ];
 
 const SPANISH_HINTS = [
@@ -43,7 +64,6 @@ const SPANISH_HINTS = [
   "devolución",
   "precio",
   "funciona",
-  "compatible",
 ];
 
 function countHints(text: string, hints: string[]): number {
@@ -53,12 +73,12 @@ function countHints(text: string, hints: string[]): number {
 /**
  * Lightweight language detection for seller messaging.
  * Prefer script detection for Arabic, then keyword scoring.
- * No external API call (keeps latency/cost low; ready to swap later).
+ * Default to French when unsure (Snowolf sells in FR).
  */
 export function detectLanguage(text: string | undefined): DetectedLanguage {
   const raw = text?.trim() ?? "";
   if (!raw) {
-    return { code: "unknown", label: "inconnue", confidence: "low" };
+    return { code: "fr", label: "français", confidence: "low" };
   }
 
   if (/[\u0600-\u06FF]/.test(raw)) {
@@ -75,8 +95,10 @@ export function detectLanguage(text: string | undefined): DetectedLanguage {
   const es = countHints(normalized, SPANISH_HINTS);
 
   // Accent / common-word cues for French
-  const frenchCue = /[àâäéèêëïîôùûüçœ]|\b(je|vous|nous|des|une|les)\b/i.test(raw)
-    ? 1
+  const frenchCue = /[àâäéèêëïîôùûüçœ]|\b(je|vous|nous|des|une|les|elle|est|pas|juste)\b/i.test(
+    raw,
+  )
+    ? 2
     : 0;
 
   const scores = [
@@ -88,8 +110,9 @@ export function detectLanguage(text: string | undefined): DetectedLanguage {
   const best = scores[0]!;
   const second = scores[1]!;
 
-  if (best.score === 0) {
-    return { code: "unknown", label: "inconnue", confidence: "low" };
+  // Seller default: French when no clear signal or tie.
+  if (best.score === 0 || best.score === second.score) {
+    return { code: "fr", label: "français", confidence: "low" };
   }
 
   const confidence =

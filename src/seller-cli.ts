@@ -1,13 +1,17 @@
 import "dotenv/config";
 import {
+  applySnowolfPlaybook,
   getSellerProfileBundle,
   initDefaultSellerProfile,
 } from "./seller/index.js";
 
 function resolveUsername(): string {
   const fromArg = process.argv[2]?.trim();
+  if (fromArg && fromArg !== "init" && fromArg !== "style") {
+    return fromArg;
+  }
   const fromEnv = process.env.EBAY_SELLER_USERNAME?.trim();
-  return fromArg || fromEnv || "snowwolfsas";
+  return fromEnv || "snowwolfsas";
 }
 
 async function showProfile(username: string): Promise<void> {
@@ -53,16 +57,38 @@ async function initProfile(username: string): Promise<void> {
   console.log("");
 }
 
+async function applyStyle(username: string): Promise<void> {
+  console.log("\n=== Seller Profile — apply Snowolf style ===\n");
+  console.log(`username=${username}\n`);
+  const bundle = await applySnowolfPlaybook(username);
+  console.log("Style concis / règles litige appliqués.");
+  console.log(`profile_id=${bundle.profile.id}`);
+  console.log(`response_style=${bundle.profile.response_style ?? ""}`);
+  console.log("");
+}
+
 async function main(): Promise<void> {
   const script = process.env.npm_lifecycle_event;
   const username = resolveUsername();
+  const argCmd = process.argv[2]?.trim();
 
-  if (script === "seller:init") {
-    await initProfile(username);
+  if (script === "seller:init" || argCmd === "init") {
+    await initProfile(argCmd === "init" ? resolveUsernameFromRest() : username);
+    return;
+  }
+
+  if (script === "seller:style" || argCmd === "style") {
+    await applyStyle(argCmd === "style" ? resolveUsernameFromRest() : username);
     return;
   }
 
   await showProfile(username);
+}
+
+function resolveUsernameFromRest(): string {
+  const fromArg = process.argv[3]?.trim();
+  const fromEnv = process.env.EBAY_SELLER_USERNAME?.trim();
+  return fromArg || fromEnv || "snowwolfsas";
 }
 
 main().catch((error: unknown) => {

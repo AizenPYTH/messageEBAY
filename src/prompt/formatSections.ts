@@ -107,11 +107,23 @@ export function formatListingSection(
         `Prix : ${v(listing.price)} ${v(listing.currency)}`,
         `État : ${v(listing.condition)}`,
         `Statut : ${v(listing.listingStatus)}`,
-        `Stock : qty=${v(listing.quantity)}`,
+        `Stock dispo : ${listing.quantityAvailable ?? v(listing.quantity)}`,
+        `Expédition sous : ${v(listing.dispatchTimeMax)} jour(s)`,
         `Extrait description : ${descSnippet}`,
         "Caractéristiques clés :",
         compactSpecifics,
-      ].join("\n"),
+        listing.variations?.length
+          ? `Variantes en stock : ${listing.variations
+              .filter((x) => x.quantityAvailable > 0)
+              .slice(0, 8)
+              .map((x) =>
+                x.specifics.map((s) => s.value).join("/"),
+              )
+              .join(" · ") || "(aucune)"}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
       truncatedDescription: true,
     };
   }
@@ -137,8 +149,23 @@ export function formatListingSection(
       formatSpecifics(listing.itemSpecifics),
       `Catégorie : ${v(listing.categoryName)}`,
       `Statut : ${v(listing.listingStatus)}`,
-      `Stock : qty=${v(listing.quantity)} vendus=${v(listing.quantitySold)}`,
-    ].join("\n"),
+      `Stock dispo : ${listing.quantityAvailable ?? v(listing.quantity)} (qty=${v(listing.quantity)} vendus=${v(listing.quantitySold)})`,
+      `Expédition sous : ${v(listing.dispatchTimeMax)} jour(s)`,
+      listing.variations?.length
+        ? [
+            "Variantes :",
+            ...listing.variations.slice(0, 15).map((x) => {
+              const label =
+                x.specifics.map((s) => `${s.name}=${s.value}`).join(", ") ||
+                x.sku ||
+                "variante";
+              return `- ${label} → dispo ${x.quantityAvailable}`;
+            }),
+          ].join("\n")
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n"),
     truncatedDescription,
   };
 }
@@ -193,6 +220,28 @@ export function formatLatestMessageSection(message: EbayMessage | undefined): st
 }
 
 /**
+ * All buyer messages since the last seller reply — must all be answered.
+ */
+export function formatPendingBuyerMessagesSection(
+  messages: EbayMessage[] | undefined,
+): string | undefined {
+  if (!messages?.length) return undefined;
+  const lines = [
+    "========== MESSAGES ACHETEUR EN ATTENTE ==========",
+    "IMPORTANT : l'acheteur a envoyé plusieurs messages d'affilée.",
+    "Tu DOIS répondre à CHAQUE point ci-dessous (pas seulement au dernier).",
+    "Format : une courte réponse par point, dans le même ordre.",
+    "",
+  ];
+  for (const [index, message] of messages.entries()) {
+    lines.push(`Point ${index + 1} (${v(message.createdDate)}) :`);
+    lines.push(v(message.messageBody));
+    lines.push("");
+  }
+  return lines.join("\n").trimEnd();
+}
+
+/**
  * Étape 8 — emplacement Prompt Engine pour le RAG.
  * Alimenté via `similarConversations` (ex: rag.toPromptSimilarSnippets).
  * Pas encore branché sur suggest/autoreply/prompt CLI.
@@ -203,13 +252,13 @@ export function formatMemorySection(
   if (!similar?.length) return undefined;
 
   const lines = [
-    "========== CONVERSATIONS SIMILAIRES ==========",
-    "Inspire-toi de ces échanges passés du vendeur. N'invente rien au-delà.",
+    "========== CONVERSATIONS SIMILAIRES (STYLE UNIQUEMENT) ==========",
+    "Référence de ton / longueur seulement. INTERDIT de recopier leurs sujets (PayPal, litige, retour…) s'ils ne sont pas dans FAITS.",
     "",
   ];
 
   for (const [index, item] of similar.entries()) {
-    lines.push(`Conversation ${index + 1}`);
+    lines.push(`Exemple ${index + 1}`);
     lines.push(`ID: ${item.conversationId}`);
     if (item.score !== undefined) {
       lines.push(`Score: ${item.score.toFixed(4)}`);
@@ -229,11 +278,15 @@ export function formatInstructionsSection(
   const rules = [
     "========== CONSIGNES ==========",
     "- Réponds uniquement avec le message final destiné au client.",
-    `- Langue obligatoire : ${language.label}.`,
-    "- N'utilise que les faits présents dans ANNONCE / VENDEUR / CONVERSATION / CONVERSATIONS SIMILAIRES.",
-    "- Ne promets pas remboursement/échange/remise sans mention explicite ci-dessus.",
-    "- Respecte strictement le profil vendeur (ton, style, politiques, signature).",
-    "- Ne récite pas l'annonce. Pas de copier-coller du titre/specs/prix sauf question explicite.",
+    `- Langue obligatoire : ${language.label} (${language.code}). INTERDIT de répondre dans une autre langue.`,
+    "- Priorité : FAITS > messages en attente > historique récent > exemples style.",
+    "- Ne promets pas remboursement/échange/remise sans mention explicite dans FAITS.",
+    "- Évite retours et litiges : ne les propose jamais en premier.",
+    "- Client contrarié / « ! » : excuse courte d'abord.",
+    "- Emballage abîmé extérieur : demande photos du carton.",
+    "- Respecte le profil vendeur (ton, style, politiques, signature).",
+    "- Sois plus court que trop long.",
+    "- INTERDIT : emojis, politesse creuse, digressions, PayPal/litige non demandés.",
   ];
 
   if (plan) {
@@ -251,14 +304,16 @@ export function formatInstructionsSection(
       rules.push(`- Preuves annonce : ${plan.listingEvidence.join(" | ")}`);
     }
     if (plan.listingAnswerability === "direct_yes" || plan.listingAnswerability === "direct_no") {
-      rules.push("- Réponds OUI/NON de façon naturelle et confiante.");
-      rules.push('- N\'ajoute PAS "Je ne peux pas confirmer...".');
+      rules.push("- Réponds OUI/NON de façon naturelle (vendeur, pas FAQ).");
+      rules.push("- INTERDIT les phrases robot (« selon les données », « je ne peux pas confirmer à partir des… »).");
       if (plan.suggestedDirectReply) {
-        rules.push(`- Réponse cible : ${plan.suggestedDirectReply}`);
+        rules.push(
+          `- Piste (adapte au ton, ne copie pas si trop sec) : ${plan.suggestedDirectReply}`,
+        );
       }
     } else if (plan.listingAnswerability === "unknown") {
       rules.push(
-        '- Info absente de l\'annonce : utilise alors seulement "Je ne peux pas confirmer cette information à partir des données disponibles."',
+        "- Info manquante : dis-le simplement et utilement avec les FAITS (ex. opérateur dans le titre → réseau de cet opérateur, sans promettre la couverture magique). Jamais de phrase administrative.",
       );
     } else {
       rules.push(
@@ -268,11 +323,16 @@ export function formatInstructionsSection(
     if (plan.avoidListingRecap) {
       rules.push("- Interdiction de reformuler/résumer l'annonce.");
     }
-    if (plan.isSimpleQuestion) {
+    if (plan.isSimpleQuestion && !plan.isMultiQuestion) {
       rules.push("- Format attendu : Bonjour + 1 réponse directe + signature.");
     }
     if (plan.isMultiQuestion) {
-      rules.push("- Réponds point par point à chaque question.");
+      rules.push(
+        "- Plusieurs messages / questions en attente : réponds à TOUS les points, pas seulement au dernier.",
+      );
+      rules.push(
+        "- Une courte réponse par point (ordre des MESSAGES ACHETEUR EN ATTENTE).",
+      );
     }
   }
 

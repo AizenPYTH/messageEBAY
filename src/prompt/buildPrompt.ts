@@ -6,13 +6,16 @@ import {
   formatLatestMessageSection,
   formatListingSection,
   formatMemorySection,
+  formatPendingBuyerMessagesSection,
   formatSellerSection,
   selectMessagesForPrompt,
 } from "./formatSections.js";
 import type { BuiltPrompt, PromptEngineInput } from "./types.js";
 
-export const DEFAULT_PROMPT_MODEL = "gpt-5.5";
-const DEFAULT_MAX_MESSAGES = 30;
+/** Cheap default for eBay chat. Override with OPENAI_MODEL (e.g. gpt-5-mini). */
+export const DEFAULT_PROMPT_MODEL =
+  process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
+const DEFAULT_MAX_MESSAGES = 8;
 const DEFAULT_MAX_DESCRIPTION_CHARS = 2500;
 const COMPACT_MAX_DESCRIPTION_CHARS = 400;
 
@@ -26,7 +29,23 @@ export function buildPrompt(input: PromptEngineInput): BuiltPrompt {
       ? COMPACT_MAX_DESCRIPTION_CHARS
       : DEFAULT_MAX_DESCRIPTION_CHARS);
 
-  const language = detectLanguage(input.context.latestMessage?.messageBody);
+  const pending = input.pendingBuyerMessages ?? [];
+  const languageSeed =
+    pending.map((m) => m.messageBody).filter(Boolean).join("\n") ||
+    input.context.latestMessage?.messageBody;
+  const detected = detectLanguage(languageSeed);
+  // Prefer plan language (already FR-defaulted); never leave "unknown".
+  const language =
+    input.responsePlan?.languageCode &&
+    input.responsePlan.languageCode !== "unknown"
+      ? {
+          code: input.responsePlan.languageCode,
+          label: input.responsePlan.languageLabel || detected.label,
+          confidence: detected.confidence,
+        }
+      : detected.code === "unknown"
+        ? { code: "fr" as const, label: "français", confidence: "low" as const }
+        : detected;
   const systemPrompt = buildSystemPrompt(language, plan);
 
   const { messages, truncated } = selectMessagesForPrompt(
@@ -50,7 +69,8 @@ export function buildPrompt(input: PromptEngineInput): BuiltPrompt {
     ),
     listingPart.section,
     formatConversationSection(messages, truncated),
-    formatLatestMessageSection(input.context.latestMessage),
+    formatPendingBuyerMessagesSection(pending) ??
+      formatLatestMessageSection(input.context.latestMessage),
     formatMemorySection(input.similarConversations),
     formatInstructionsSection(language, input.sellerProfile, plan),
   ].filter((section): section is string => Boolean(section));

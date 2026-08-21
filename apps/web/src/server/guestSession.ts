@@ -1,6 +1,12 @@
 import "server-only";
-import { randomUUID } from "node:crypto";
 import { cookies } from "next/headers";
+import type { NextResponse } from "next/server";
+import {
+  GUEST_COOKIE,
+  ensureGuestIdFromRequestCookie,
+  guestCookieOptions,
+  isGuestUuid,
+} from "@/lib/guest-cookie";
 import { upsertAppProfile } from "@/server/core";
 import { ensureServerEnv, hasEnv } from "@/server/env";
 
@@ -10,14 +16,7 @@ export type GuestUser = {
   displayName?: string;
 };
 
-export const GUEST_COOKIE = "ebay_ai_guest_id";
-const GUEST_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
-
-function isUuid(value: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    value,
-  );
-}
+export { GUEST_COOKIE, guestCookieOptions, ensureGuestIdFromRequestCookie };
 
 function toGuestUser(id: string): GuestUser {
   return {
@@ -42,27 +41,24 @@ export async function getGuestUserIfPresent(): Promise<GuestUser | null> {
   ensureServerEnv();
   const jar = await cookies();
   const existing = jar.get(GUEST_COOKIE)?.value?.trim();
-  if (!existing || !isUuid(existing)) return null;
+  if (!existing || !isGuestUuid(existing)) return null;
   return toGuestUser(existing);
 }
 
 /**
- * Create/persist guest identity. Call from Route Handlers only
- * (cookie set is reliable there).
+ * Create/persist guest identity. Call from Route Handlers only.
+ * Also call applyGuestCookie(response, user.id) on the returned NextResponse.
  */
 export async function getOrCreateGuestUser(): Promise<GuestUser> {
   ensureServerEnv();
   const jar = await cookies();
   const existing = jar.get(GUEST_COOKIE)?.value?.trim();
-  const id = existing && isUuid(existing) ? existing : randomUUID();
+  const id =
+    existing && isGuestUuid(existing)
+      ? existing
+      : ensureGuestIdFromRequestCookie(undefined);
 
-  jar.set(GUEST_COOKIE, id, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: GUEST_MAX_AGE,
-  });
+  jar.set(GUEST_COOKIE, id, guestCookieOptions);
 
   const user = toGuestUser(id);
   await upsertAppProfile({
@@ -71,4 +67,9 @@ export async function getOrCreateGuestUser(): Promise<GuestUser> {
     displayName: user.displayName ?? null,
   });
   return user;
+}
+
+/** Put guest id on the actual HTTP response (required for redirects in Next 15). */
+export function applyGuestCookie(response: NextResponse, guestId: string): void {
+  response.cookies.set(GUEST_COOKIE, guestId, guestCookieOptions);
 }

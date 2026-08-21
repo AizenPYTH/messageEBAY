@@ -10,7 +10,7 @@ export function Card({
   return (
     <div
       className={cn(
-        "rounded-xl border border-border bg-card shadow-[0_1px_2px_rgba(0,0,0,0.04)]",
+        "rounded-[var(--radius-xl)] border border-[var(--border-light)] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]",
         className,
       )}
     >
@@ -29,13 +29,15 @@ export function CardHeader({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
+    <div className="flex items-start justify-between gap-4 border-b border-[var(--border-light)] px-5 py-4">
       <div>
-        <h2 className="text-sm font-semibold tracking-tight text-foreground">
+        <h2 className="text-sm font-semibold tracking-tight text-[var(--text-primary)]">
           {title}
         </h2>
         {description ? (
-          <p className="mt-1 text-sm text-muted">{description}</p>
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">
+            {description}
+          </p>
         ) : null}
       </div>
       {action}

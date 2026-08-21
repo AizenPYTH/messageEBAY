@@ -4,6 +4,8 @@
  * Webpack `extensionAlias` maps the engine's internal `.js` imports to `.ts` sources.
  */
 export { createDefaultAiEngine } from "../../../../src/ai/index";
+export { ensureSellerAlerts } from "../../../../src/alerts/index";
+export { analyzeMessage } from "../../../../src/analysis/index";
 export {
   formatConversationDate,
   isFromSelf,
@@ -17,9 +19,17 @@ export {
   getSellerByUsername,
   syncConversationToDatabase,
   upsertAppProfile,
+  getAppProfile,
+  setAutopilotEnabled,
+  listAutopilotUserIds,
   upsertSellerProfile,
   getSellerProfileBySellerId,
+  listOpenSellerAlerts,
+  resolveSellerAlert,
+  type SellerAlertRow,
 } from "../../../../src/database/index";
+export { runAutopilotAll, runAutopilotForUser } from "../../../../src/autopilot/index";
+export { syncSellerCatalogFromApi } from "../../../../src/catalog/syncFromApi";
 export { getSupabaseClient } from "../../../../src/database/client";
 export {
   disconnectEbay,
@@ -33,7 +43,7 @@ export {
   withUserEbayToken,
 } from "../../../../src/ebay/connectionService";
 export { getAuthenticatedUsername } from "../../../../src/ebay/getUser";
-export { listConversations } from "../../../../src/ebay/messageApi";
+export { listConversations, findConversationSummary } from "../../../../src/ebay/messageApi";
 export {
   buildAuthorizeUrl,
   exchangeCodeForTokens,

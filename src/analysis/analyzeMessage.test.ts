@@ -74,4 +74,14 @@ describe("analyzeMessage", () => {
     const plan = analyzeMessage("Bonjour, est-ce toujours disponible ?");
     assert.equal(plan.languageCode, "fr");
   });
+
+  it("detects shipping tracking intent", () => {
+    const plan = analyzeMessage("Où est mon colis ?");
+    assert.equal(plan.intent, "shipping_tracking");
+  });
+
+  it("treats not-received as shipping tracking", () => {
+    const plan = analyzeMessage("Bonjour, je n'ai pas reçu mon colis");
+    assert.equal(plan.intent, "shipping_tracking");
+  });
 });

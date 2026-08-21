@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import { config, ebayUrls } from "./config.js";
 
-const MODEL = "gpt-5.5";
+const MODEL = process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
 
 type Message = {
   messageId?: string;

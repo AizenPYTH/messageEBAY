@@ -141,9 +141,11 @@ export function ConnectionsPanel({
           </dl>
 
           <p className="text-xs text-muted">
-            {authConfigured
-              ? "Chaque PC / navigateur peut connecter son propre compte eBay (sans login e-mail). Après OAuth, Conversations utilise ce compte."
-              : "OAuth incomplet : vérifiez EBAY_CLIENT_ID/SECRET/RUNAME et TOKEN_ENCRYPTION_KEY sur Vercel."}
+            {connection.username?.includes("token serveur")
+              ? "Pour l’instant le site utilise le token serveur. Cliquez Reconnecter eBay pour lier CE navigateur à ton compte (OAuth)."
+              : authConfigured
+                ? "Chaque PC / navigateur peut connecter son propre compte eBay (sans login e-mail). Reconnectez eBay pour activer aussi le suivi de commandes (fulfillment)."
+                : "OAuth incomplet : vérifiez EBAY_CLIENT_ID/SECRET/RUNAME et TOKEN_ENCRYPTION_KEY sur Vercel."}
           </p>
 
           <div className="flex flex-wrap gap-2">

@@ -1,3 +1,4 @@
+export { filterSimilarForStyle } from "./filterSimilar.js";
 export { embedText, indexPendingMessageEmbeddings } from "./embeddings.js";
 export {
   searchSimilarMessages,

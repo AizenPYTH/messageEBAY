@@ -2,6 +2,11 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { isAuthSkipped } from "@/lib/auth-mode";
 import {
+  GUEST_COOKIE,
+  ensureGuestIdFromRequestCookie,
+  guestCookieOptions,
+} from "@/lib/guest-cookie";
+import {
   getPublicSupabaseAnonKey,
   getPublicSupabaseUrl,
   isSupabaseAuthConfigured,
@@ -10,8 +15,16 @@ import {
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
-  // Testing mode: no login / magic link / Google gate
+  // Testing mode: no login gate — but keep a stable guest cookie for eBay OAuth.
   if (isAuthSkipped() || !isSupabaseAuthConfigured()) {
+    if (isAuthSkipped()) {
+      const guestId = ensureGuestIdFromRequestCookie(
+        request.cookies.get(GUEST_COOKIE)?.value,
+      );
+      // So RSC / route handlers see the same id on this request.
+      request.cookies.set(GUEST_COOKIE, guestId);
+      supabaseResponse.cookies.set(GUEST_COOKIE, guestId, guestCookieOptions);
+    }
     return supabaseResponse;
   }
 

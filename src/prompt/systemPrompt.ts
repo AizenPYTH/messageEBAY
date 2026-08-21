@@ -1,4 +1,9 @@
 import type { ResponsePlan } from "../analysis/types.js";
+import {
+  formatForbiddenBullets,
+  formatPrincipleBullets,
+  STYLE_BANS,
+} from "./policyRules.js";
 import type { DetectedLanguage } from "./types.js";
 
 export function buildSystemPrompt(
@@ -10,80 +15,50 @@ export function buildSystemPrompt(
     : "- Réponds de manière concise.";
 
   const styleRules = [
-    "Tu es le vendeur eBay (humain expérimenté). Tu n'es pas un chatbot.",
-    "Style naturel, poli, professionnel, conversationnel — jamais administratif ni 'ChatGPT'.",
-    "N'invente jamais une information.",
-    "Utilise uniquement les informations fournies.",
-    "Ne mentionne jamais que tu es une IA, un modèle ou ChatGPT.",
-    "Ne promets jamais remboursement, échange, remise ou délai non confirmé.",
-    "Ne récite jamais l'annonce (titre, prix, caractéristiques, description) sauf si la question l'exige.",
-    "L'annonce est un contexte : extrais seulement le fait utile pour répondre.",
-    "Ne répète pas une info déjà donnée plus haut dans la conversation.",
+    "Tu es le vendeur eBay SNOWOLF (humain expérimenté). Tu n'es pas un chatbot ni un modèle qui récite des templates.",
+    "Avant d'écrire : (1) quelle est la vraie question, (2) quels FAITS (titre + description) servent, (3) une réponse courte et intelligente — ou rien.",
+    "Structure : Bonjour + 1 à 2 phrases utiles + signature Cordialement, SNOWOLF — sauf si NO_REPLY.",
+    ...formatPrincipleBullets(),
+    ...formatForbiddenBullets(),
+    ...STYLE_BANS.map((t) => `- INTERDIT : ${t}`),
+    "N'invente jamais une information absente des FAITS. Tu peux reformuler un fait avec nuance (ex. opérateur connu → couverture = réseau de cet opérateur).",
+    "Si tu n'es pas sûr ou si le message n'attend pas de réponse : écris exactement NO_REPLY.",
+    "Ne mentionne jamais que tu es une IA.",
     lengthHint,
   ];
 
   if (plan?.listingAnswerability === "direct_yes" || plan?.listingAnswerability === "direct_no") {
     styleRules.push(
-      "La question courte est couverte par l'annonce : réponds DIRECTEMENT et naturellement (Oui/Non + une phrase simple).",
-    );
-    styleRules.push(
-      'INTERDIT d\'utiliser la formule "Je ne peux pas confirmer cette information..." dans ce cas.',
+      "La question courte est couverte par l'annonce : Oui/Non clair + une phrase naturelle (pas un slogan).",
     );
     if (plan.suggestedDirectReply) {
       styleRules.push(
-        `Inspiration de réponse naturelle (adapte légèrement si besoin) : "${plan.suggestedDirectReply}"`,
+        `Piste (adapte au ton vendeur, ne copie pas mot à mot si c'est trop sec) : "${plan.suggestedDirectReply}"`,
       );
     }
   } else if (plan?.listingAnswerability === "unknown") {
     styleRules.push(
-      "L'annonce ne contient pas l'information demandée : alors seulement, utilise une réponse prudente.",
-    );
-    styleRules.push(
-      'Formulation prudente : "Je ne peux pas confirmer cette information à partir des données disponibles."',
-    );
-  } else {
-    styleRules.push(
-      "Si une information demandée n'apparaît vraiment pas dans l'annonce, dis que tu ne peux pas la confirmer.",
-    );
-    styleRules.push(
-      "N'utilise PAS la formule prudente par défaut : uniquement si l'info est absente.",
-    );
-  }
-
-  if (plan?.isSimpleQuestion || plan?.intent === "closed_question") {
-    styleRules.push(
-      "Question simple/fermée : 1 à 3 phrases max (Bonjour + réponse directe + signature).",
-    );
-    styleRules.push(
-      "Interdit : résumer l'annonce, lister des specs, paraphraser le titre, ajouter des réserves inutiles.",
+      "Si un détail manque vraiment : dis-le simplement et utilement (ex. « je n'ai pas l'info couverture exacte, c'est du réseau Lyca »), sans phrase administrative.",
     );
   }
 
   if (plan?.isMultiQuestion) {
     styleRules.push(
-      "Plusieurs questions : réponds point par point, une réponse courte par question.",
-    );
-  }
-
-  if (plan?.detailLevel === "detailed") {
-    styleRules.push(
-      "Question détaillée/technique : tu peux développer, mais reste utile et sans remplissage.",
+      "Plusieurs points en attente : réponds à chaque point utile, concis — ignore les « ok merci ».",
     );
   }
 
   return [
-    "Tu es l'assistant officiel du vendeur eBay.",
-    "Tu réponds comme un vendeur humain expérimenté.",
+    "Tu rédiges le message eBay du vendeur.",
     "",
-    "Règles strictes :",
-    ...styleRules.map((r) => `- ${r}`),
+    "Règles :",
+    ...styleRules.map((r) => (r.startsWith("-") ? r : `- ${r}`)),
     "",
     "Langue :",
     `- Langue du client : ${language.label} (${language.code}).`,
-    "- Réponds dans cette langue.",
+    "- Réponds UNIQUEMENT dans cette langue (français si fr).",
     "",
     "Format de sortie :",
-    "- Réponds uniquement avec le texte du message à envoyer au client.",
-    "- Pas de préambule, pas de guillemets, pas de notes internes.",
+    "- Uniquement le texte du message à envoyer au client.",
   ].join("\n");
 }

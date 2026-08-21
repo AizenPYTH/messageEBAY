@@ -7,6 +7,7 @@ export type QuestionIntent =
   | "negotiation"
   | "return_request"
   | "after_sales"
+  | "shipping_tracking"
   | "multi_question"
   | "other";
 
@@ -18,6 +19,7 @@ export type ClosedQuestionTopic =
   | "functional"
   | "available"
   | "condition"
+  | "oem_generic"
   | "battery_original"
   | "charger_included"
   | "keyboard_layout"
@@ -56,4 +58,18 @@ export type ResponsePlan = {
   listingEvidence?: string[];
   /** Natural short reply hint for the model when answerability is direct. */
   suggestedDirectReply?: string;
+  /** True when the seller must intervene (photos, phone, dispute…). */
+  needsSellerIntervention?: boolean;
+  /** Machine reason code for escalation. */
+  escalationReason?: string;
+  /** Human-readable escalation / case summary for Rapports. */
+  escalationLabel?: string;
+  /** Deterministic reply kind (no LLM), e.g. partial refund offer. */
+  autoReplyKind?:
+    | "partial_refund_10"
+    | "ask_packaging_photos"
+    | "wrong_address_cancel"
+    | "refuse_pickup"
+    | "color_preference_return"
+    | "return_address";
 };

@@ -31,13 +31,5 @@ jobs:
           if [ "$CODE" = "200" ]; then
             exit 0
           fi
-          # 504 = timed out mid-run; retry once with smaller chance of backlog
-          if [ "$CODE" = "504" ] || [ "$CODE" = "500" ]; then
-            echo "Retrying once after timeout/error..."
-            sleep 5
-            curl -sS -f --max-time 90 \
-              -H "Authorization: Bearer ${CRON_SECRET}" \
-              "https://message-ai-web.vercel.app/api/cron/autopilot"
-            exit $?
-          fi
+          # Do not retry: a timeout after sends already went out would spam the same buyers.
           exit 1

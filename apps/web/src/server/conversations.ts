@@ -1,7 +1,10 @@
 import "server-only";
 import {
+  analyzeMessage,
   buildAssistantContext,
   createDefaultAiEngine,
+  ensureSellerAlerts,
+  findConversationSummary,
   formatConversationDate,
   getAuthenticatedUsername,
   isFromSelf,
@@ -86,6 +89,21 @@ export type AiGenerationDto = {
   };
   intentLabel: string;
   listingAnswerability?: string;
+  /** AI refused to answer — seller must intervene. */
+  escalated: boolean;
+  escalationLabel?: string;
+  escalationReason?: string;
+  alertCreated: boolean;
+  digestCreated: boolean;
+  /** Shipment tracking resolution (où est mon colis). */
+  shipment?: {
+    kind: string;
+    trackingNumber?: string;
+    carrier?: string;
+    statusLabel?: string;
+    detailMessage?: string;
+    trackingUrl?: string;
+  };
 };
 
 export type ActionResult<T> =
@@ -147,8 +165,12 @@ export async function fetchConversationDetail(
           ctx.latestMessage.recipientUsername,
         );
       }
+      const summary = await findConversationSummary(conversationId).catch(
+        () => undefined,
+      );
       const buyer = resolveClientUsername({
         selfUsername,
+        otherPartyUsername: summary?.otherPartyUsername,
         participants,
       });
 
@@ -169,6 +191,26 @@ export async function fetchConversationDetail(
       const latestMessage = ctx.latestMessage
         ? toDto(ctx.latestMessage)
         : messages[messages.length - 1];
+
+      // Seller alerts only on OUR listings, and only from the buyer's message.
+      const user = await getOptionalUser();
+      const latestBuyerText = latestMessage?.isFromSeller
+        ? undefined
+        : latestMessage?.body;
+      const plan = analyzeMessage(latestBuyerText);
+      await ensureSellerAlerts({
+        userId: user?.id ?? null,
+        conversationId,
+        buyerUsername: buyer,
+        listingTitle: ctx.listing?.title,
+        listingPrice: ctx.listing?.price,
+        messages: ctx.messages,
+        responsePlan: plan,
+        latestBuyerText: latestBuyerText ?? null,
+        sellerUsername: selfUsername,
+        authUsername: authUsername,
+        listingSellerUsername: listingSeller,
+      });
 
       return {
         ok: true,
@@ -212,6 +254,42 @@ export async function generateAiReply(
     return await withEbayContext(async () => {
       const engine = createDefaultAiEngine();
       const result = await engine.run({ conversationId });
+      const user = await getOptionalUser();
+      const authUsername = await getAuthenticatedUsername();
+      const selfUsername = resolveSelfUsername({
+        authUsername,
+        listingSeller: result.listing?.sellerUsername,
+      });
+      const participants = result.conversation.messages.flatMap((m) => [
+        m.senderUsername,
+        m.recipientUsername,
+      ]);
+      const buyer = resolveClientUsername({
+        selfUsername,
+        participants,
+      });
+
+      const latestFromBuyer = result.conversation.latestMessage
+        ? !isFromSelf({
+            senderUsername: result.conversation.latestMessage.senderUsername,
+            selfUsername,
+          })
+        : false;
+      const alerts = await ensureSellerAlerts({
+        userId: user?.id ?? null,
+        conversationId,
+        buyerUsername: buyer,
+        listingTitle: result.listing?.title,
+        listingPrice: result.listing?.price,
+        messages: result.conversation.messages,
+        responsePlan: result.responsePlan,
+        latestBuyerText: latestFromBuyer
+          ? result.conversation.latestMessage?.messageBody
+          : null,
+        sellerUsername: selfUsername,
+        authUsername: authUsername,
+        listingSellerUsername: result.listing?.sellerUsername,
+      });
 
       const ragSummary =
         result.similarConversations.length === 0
@@ -238,6 +316,23 @@ export async function generateAiReply(
           tokenUsage: result.tokenUsage,
           intentLabel: result.metadata.intentLabel,
           listingAnswerability: result.responsePlan.listingAnswerability,
+          escalated: Boolean(result.escalated),
+          escalationLabel: result.responsePlan.escalationLabel,
+          escalationReason: result.responsePlan.escalationReason,
+          alertCreated: Boolean(alerts.escalationAlert),
+          digestCreated: Boolean(alerts.digestAlert),
+          ...(result.shipment
+            ? {
+                shipment: {
+                  kind: result.shipment.kind,
+                  trackingNumber: result.shipment.trackingNumber,
+                  carrier: result.shipment.carrier,
+                  statusLabel: result.shipment.statusLabel,
+                  detailMessage: result.shipment.detailMessage,
+                  trackingUrl: result.shipment.trackingUrl,
+                },
+              }
+            : {}),
         },
       };
     });

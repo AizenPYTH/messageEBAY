@@ -31,11 +31,11 @@ export function TrainPanel() {
   }
 
   return (
-    <div className="mx-auto max-w-xl space-y-4">
+    <div className="fade-in mx-auto max-w-xl space-y-4">
       <Card>
         <CardHeader
           title="Entraîner l’assistant"
-          description="On récupère vos anciennes conversations eBay pour que l’IA apprenne votre façon de répondre."
+          description="On récupère vos anciennes conversations pour que l’IA apprenne votre façon de répondre."
         />
         <CardBody className="space-y-4">
           <ol className="list-decimal space-y-2 pl-5 text-sm text-muted">

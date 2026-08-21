@@ -4,6 +4,17 @@ export function firstTag(xml: string, tag: string): string | undefined {
   return match?.[1]?.trim();
 }
 
+/** All inner XML blocks for a repeated tag. */
+export function allBlocks(xml: string, tag: string): string[] {
+  const re = new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)</${tag}>`, "gi");
+  const out: string[] = [];
+  for (const match of xml.matchAll(re)) {
+    const inner = match[1]?.trim();
+    if (inner) out.push(inner);
+  }
+  return out;
+}
+
 export function allTagPairs(
   xml: string,
   nameTag: string,

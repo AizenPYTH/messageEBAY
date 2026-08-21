@@ -7,7 +7,7 @@ import {
 } from "../database/index.js";
 import type { UserConnectionRow } from "../database/types.js";
 import { decryptSecret, encryptSecret } from "../security/tokenCrypto.js";
-import { MESSAGE_SCOPE, refreshAccessToken } from "./oauth.js";
+import { OAUTH_SCOPES, refreshAccessToken } from "./oauth.js";
 import { runWithEbayTokenAsync } from "./tokenContext.js";
 import { getAuthenticatedUsername } from "./getUser.js";
 
@@ -65,7 +65,7 @@ export async function saveEbayConnection(input: {
       ? encryptSecret(input.refreshToken)
       : null,
     expiresAt,
-    scopes: input.scopes ?? MESSAGE_SCOPE,
+    scopes: input.scopes ?? OAUTH_SCOPES,
   });
 
   if (input.username) {

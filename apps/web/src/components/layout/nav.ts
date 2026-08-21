@@ -1,5 +1,6 @@
 import type { ComponentType, SVGProps } from "react";
 import {
+  IconChart,
   IconMessages,
   IconSettings,
   IconSparkles,
@@ -16,6 +17,7 @@ export type NavItem = {
 /** Minimal seller-facing navigation — everything else stays reachable by URL if needed. */
 export const PRIMARY_NAV: NavItem[] = [
   { href: "/conversations", label: "Messages", icon: IconMessages },
+  { href: "/reports", label: "Rapports", icon: IconChart },
   { href: "/train", label: "Entraîner", icon: IconSparkles },
   { href: "/seller-profile", label: "Mon style", icon: IconUser },
   { href: "/settings/connections", label: "Compte eBay", icon: IconSettings },

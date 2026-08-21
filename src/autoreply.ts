@@ -5,7 +5,7 @@ import { isMainModule } from "./cli/isMain.js";
 import { config, ebayUrls } from "./config.js";
 import { sendConversationMessage } from "./ebay/sendMessage.js";
 
-const MODEL = "gpt-5.5";
+const MODEL = process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
 
 type Message = {
   messageId?: string;

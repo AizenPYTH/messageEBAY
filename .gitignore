@@ -20,3 +20,6 @@ apps/web/**/*.d.ts.map
 
 # Vercel
 .vercel
+
+.vercel
+.env*

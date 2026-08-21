@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   isFromSelf,
+  isOwnListing,
+  latestIncomingBuyerText,
   resolveClientUsername,
   resolveSelfUsername,
   sideOfSender,
@@ -59,5 +61,41 @@ describe("messageSides", () => {
       }),
       "client",
     );
+  });
+
+  it("detects when we are buyer on someone else's listing", () => {
+    assert.equal(
+      isOwnListing({
+        authUsername: "aize-5",
+        listingSeller: "autre-vendeur",
+      }),
+      false,
+    );
+    assert.equal(
+      isOwnListing({
+        authUsername: "aize-5",
+        listingSeller: "aize-5",
+      }),
+      true,
+    );
+  });
+
+  it("ignores our own photo request when finding incoming buyer text", () => {
+    const text = latestIncomingBuyerText({
+      selfUsername: "aize-5",
+      messages: [
+        {
+          senderUsername: "aize-5",
+          messageBody: "bonjour est il possible d'avoir davantage de photo ?",
+          createdDate: "2026-08-06T12:23:00.000Z",
+        },
+        {
+          senderUsername: "autre-vendeur",
+          messageBody: "Bonjour, que recherchez-vous ?",
+          createdDate: "2026-08-06T11:00:00.000Z",
+        },
+      ],
+    });
+    assert.equal(text, "Bonjour, que recherchez-vous ?");
   });
 });

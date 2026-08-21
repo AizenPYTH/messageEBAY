@@ -2,6 +2,11 @@ export { buildSystemPrompt } from "./systemPrompt.js";
 export { detectLanguage } from "./detectLanguage.js";
 export { buildPrompt, DEFAULT_PROMPT_MODEL } from "./buildPrompt.js";
 export { generateEngineeredReply } from "./generateReply.js";
+export { buildFactPack, formatFactPackSection } from "./buildFactPack.js";
+export {
+  CORE_REPLY_PRINCIPLES,
+  isBuyerUpset,
+} from "./policyRules.js";
 export type {
   BuiltPrompt,
   DetectedLanguage,
@@ -11,3 +16,4 @@ export type {
   SimilarConversationSnippet,
 } from "./types.js";
 export type { ResponsePlan } from "../analysis/types.js";
+export type { ReplyFactPack } from "./buildFactPack.js";
