@@ -8,6 +8,11 @@ import { isTrackingRequest } from "../shipping/detectTracking.js";
 import { isDeliveryEtaAsk, detectDestination } from "../shipping/deliveryEta.js";
 import { SAME_DAY_BEFORE_15 } from "../seller/casualPhrases.js";
 import { isNearDuplicateReply } from "../autopilot/alreadyReplied.js";
+import {
+  extractAskedIdentity,
+  identityMatchesText,
+  isEmptyIdentity,
+} from "../product/identity.js";
 import { isAbstainReply } from "./abstain.js";
 
 export type ReplyQualityIssue =
@@ -17,6 +22,7 @@ export type ReplyQualityIssue =
   | "invented"
   | "too_long"
   | "answers_old_topic"
+  | "model_mismatch"
   | "robotic";
 
 export type ReplyQualityResult = {
@@ -34,11 +40,14 @@ const RETURN_REPLY =
 const PRICE_REPLY = /\b(\d+[,.]\d{2}\s*(€|eur)|prix\s+(est|de))\b/i;
 const STOCK_REPLY =
   /\b(dispo|disponible|en stock|plus en stock|rupture|oui|non|encore)\b/i;
-const PART_CODE = /\b(A\d{4}|820-\d{4,}-[A-Z0-9]+)\b/gi;
+const PART_CODE =
+  /\b(A\d{4}[A-Z]?|(?:SM-)?[ASNMFGJET]\d{3}[A-Z]{1,2}|820-\d{4,}-[A-Z0-9]+)\b/gi;
 const ROBOT_NO_INFO =
   /je ne peux pas (fournir|confirmer)|je vous encourage|source fiable|d[ée]tails ne sont pas disponibles|n['’]h[ée]sitez pas|v[ée]rifiez les sp[ée]cifications|satisfaction est notre priorit|point d['’]honneur|nous mettons tout en [œoe]uvre|consulter un professionnel|expertise technique|nous pourrions envisager|tenir inform[ée] de l['’][ée]volution|je vous informe que nous proposons|merci pour votre compr[ée]hension/i;
 const UNTESTED_HEDGE =
   /ne test(e|ons) pas (toutes )?les fonctions|je ne peux pas garantir|on ne (peut|peut\s+pas) garant|n['’]est pas n[ée]cessairement .{0,60}apple|signes d['’]usure minimes/i;
+const AFFIRMS_STOCK =
+  /\b(oui|en stock|dispo|disponible|voici le lien|on a|je l['’]ai|in stock|here'?s the link)\b/i;
 const PICKUP_CONFIRM =
   /(r[ée]cup[ée]ration.{0,50}possible|heure qui vous convient|demain matin)/i;
 
@@ -47,6 +56,11 @@ function bodyWithoutSignature(reply: string): string {
     .replace(/cordialement[\s\S]*$/i, "")
     .replace(/^\s*(bonjour|bonsoir|hello|hi)\s*,?\s*/i, "")
     .trim();
+}
+
+function describeAsk(ask: string): string {
+  const identity = extractAskedIdentity(ask);
+  return identity?.label.trim() || identity?.codes.join(", ") || "modèle demandé";
 }
 
 function wordCount(text: string): number {
@@ -165,6 +179,28 @@ export function assessReplyQuality(input: {
     }
   }
 
+  // A reply may only say "oui / en stock / voici le lien" about the model that
+  // was actually asked for. Naming another one in the same breath is how an
+  // iPhone link ends up answering a Samsung question. Negative or explanatory
+  // sentences ("non, cette annonce c'est le A135F") stay allowed on purpose.
+  const askedIdentity = extractAskedIdentity(ask);
+  if (!isEmptyIdentity(askedIdentity)) {
+    const sellingSentence = body
+      .replace(/https?:\/\/\S+/g, " ")
+      .split(/(?<=[.!?\n])\s+/)
+      .find(
+        (sentence) =>
+          AFFIRMS_STOCK.test(sentence) &&
+          identityMatchesText(askedIdentity, sentence) === "mismatch",
+      );
+    if (sellingSentence) {
+      issues.push("model_mismatch");
+      reasons.push(
+        `la réponse propose un autre modèle que celui demandé (${describeAsk(ask)}) : « ${sellingSentence.trim()} ». Répondre sur le modèle demandé, ou ne rien envoyer.`,
+      );
+    }
+  }
+
   if (ROBOT_NO_INFO.test(body)) {
     issues.push("robotic");
     reasons.push(
@@ -245,6 +281,7 @@ export function assessReplyQuality(input: {
       i === "duplicate" ||
       i === "invented" ||
       i === "answers_old_topic" ||
+      i === "model_mismatch" ||
       i === "robotic" ||
       i === "misses_question",
   );

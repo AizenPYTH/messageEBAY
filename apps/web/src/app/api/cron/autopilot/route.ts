@@ -23,6 +23,20 @@ async function handle(request: Request): Promise<Response> {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 
+  const enabled = (process.env.AUTOPILOT_ENABLED ?? "").trim().toLowerCase();
+  if (["0", "false", "off", "no", "non"].includes(enabled)) {
+    return NextResponse.json({
+      ok: true,
+      disabled: true,
+      sent: 0,
+      alerted: 0,
+      errors: 0,
+      processed: 0,
+      users: 0,
+      detail: "Autopilot désactivé (AUTOPILOT_ENABLED=false)",
+    });
+  }
+
   try {
     ensureServerEnv();
     const result = await runAutopilotAll({ limitPerUser: 200 });

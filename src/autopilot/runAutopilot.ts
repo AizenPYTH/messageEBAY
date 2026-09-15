@@ -9,6 +9,7 @@ import {
   ourRepliesSinceIncoming,
   weInitiatedContact,
 } from "./alreadyReplied.js";
+import { autopilotMode } from "./killSwitch.js";
 import { isMutedBuyer } from "./mutedBuyers.js";
 import {
   isFromSelf,
@@ -116,6 +117,7 @@ export async function runAutopilotForUser(
   options?: { limit?: number },
 ): Promise<AutopilotUserResult> {
   const limit = options?.limit ?? DEFAULT_PROCESS_LIMIT;
+  const mode = autopilotMode();
   const result: AutopilotUserResult = {
     userId,
     processed: 0,
@@ -125,6 +127,15 @@ export async function runAutopilotForUser(
     errors: 0,
     conversations: [],
   };
+
+  if (mode === "off") {
+    result.conversations.push({
+      conversationId: "-",
+      action: "skipped",
+      detail: "Autopilot désactivé (AUTOPILOT_ENABLED=false)",
+    });
+    return result;
+  }
 
   // Autopilot always uses two-step reason→draft for stricter NO_REPLY.
   const prevTwoStep = process.env.OPENAI_TWO_STEP;
@@ -494,6 +505,17 @@ export async function runAutopilotForUser(
                 ai = again;
                 reply = next;
               }
+            }
+
+            if (mode === "dry_run") {
+              result.skipped += 1;
+              result.conversations.push({
+                conversationId: item.conversationId,
+                buyer,
+                action: "skipped",
+                detail: `Mode brouillon (AUTOPILOT_DRY_RUN) — non envoyé : ${reply.replace(/\s+/g, " ").slice(0, 160)}`,
+              });
+              continue;
             }
 
             const send = await sendConversationMessage(

@@ -23,6 +23,17 @@ function wrapReply(
     : `Bonjour,\n\n${body}\n\n${sig}`;
 }
 
+/** "écran" → "l'écran", "clavier" → "le clavier". */
+function frenchArticle(noun: string): string {
+  const first = noun
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .charAt(0)
+    .toLowerCase();
+  return /[aeiouy]/.test(first) ? `l'${noun}` : `le ${noun}`;
+}
+
 function shippingBit(parts: string[]): string {
   if (parts.length === 0) return SAME_DAY_BEFORE_15;
   return parts.join(" ").replace(/\.$/, "");
@@ -35,6 +46,7 @@ function formatForeignYes(input: {
   shippingParts: string[];
   currentListingTitle?: string | null;
   currentListingInStock?: boolean;
+  currentListingAnswersAsk?: boolean;
   languageCode?: string;
 }): string {
   const hit = input.hit;
@@ -44,16 +56,16 @@ function formatForeignYes(input: {
 
   if (input.languageCode === "en") {
     const here =
-      input.currentListingInStock === false
+      input.currentListingInStock === false || input.currentListingAnswersAsk === false
         ? ""
         : `Yes the ${nick} is still available, ${ship}. `;
     return `${here}Yes we have ${other} in stock, here's the link: ${hit.itemUrl}`;
   }
 
   const here =
-    input.currentListingInStock === false
+    input.currentListingInStock === false || input.currentListingAnswersAsk === false
       ? ""
-      : `Oui le ${nick} est tjr dispo, ${ship}. `;
+      : `Oui ${frenchArticle(nick)} est tjr dispo, ${ship}. `;
   return `${here}Oui on a ${other} en stock, voici le lien : ${hit.itemUrl}`;
 }
 
@@ -63,6 +75,7 @@ function formatForeignMulti(input: {
   shippingParts: string[];
   currentListingTitle?: string | null;
   currentListingInStock?: boolean;
+  currentListingAnswersAsk?: boolean;
   languageCode?: string;
 }): string {
   const nick = casualProductNickname(input.currentListingTitle);
@@ -72,16 +85,16 @@ function formatForeignMulti(input: {
 
   if (input.languageCode === "en") {
     const here =
-      input.currentListingInStock === false
+      input.currentListingInStock === false || input.currentListingAnswersAsk === false
         ? ""
         : `Yes the ${nick} is still available, ${ship}. `;
     return `${here}Yes we have ${other} in stock, here's the link: ${first.itemUrl}`;
   }
 
   const here =
-    input.currentListingInStock === false
+    input.currentListingInStock === false || input.currentListingAnswersAsk === false
       ? ""
-      : `Oui le ${nick} est tjr dispo, ${ship}. `;
+      : `Oui ${frenchArticle(nick)} est tjr dispo, ${ship}. `;
   return `${here}Oui on a ${other} en stock, voici le lien : ${first.itemUrl}`;
 }
 
@@ -91,15 +104,29 @@ function formatForeignNo(input: {
   oos: boolean;
   currentListingTitle?: string | null;
   currentListingInStock?: boolean;
+  currentListingAnswersAsk?: boolean;
   languageCode?: string;
 }): string {
   const nick = casualProductNickname(input.currentListingTitle);
   const ship = shippingBit(input.shippingParts);
-  const other = input.label.trim() || "ça";
+  // "Samsung Galaxy A13 4G (A137F)" reads as a product code on its own, so name
+  // the part too: "l'écran Samsung Galaxy A13 4G (A137F)".
+  const asked = input.label.trim();
+  const other = asked
+    ? input.languageCode === "en"
+      ? nick
+        ? `the ${nick} for ${asked}`
+        : asked
+      : nick
+        ? `${frenchArticle(nick)} ${asked}`
+        : asked
+    : input.languageCode === "en"
+      ? "that"
+      : "ça";
 
   if (input.languageCode === "en") {
     const here =
-      input.currentListingInStock === false
+      input.currentListingInStock === false || input.currentListingAnswersAsk === false
         ? ""
         : `Yes the ${nick} is still available, ${ship}. `;
     const p = input.oos
@@ -109,12 +136,17 @@ function formatForeignNo(input: {
   }
 
   const here =
-    input.currentListingInStock === false
+    input.currentListingInStock === false || input.currentListingAnswersAsk === false
       ? ""
-      : `Oui le ${nick} est tjr dispo, ${ship}. `;
-  const p = input.oos
-    ? `Par contre ${other} n'est plus dispo pour le moment.`
-    : `Par contre je n'ai pas ${other} en stock actuellement.`;
+      : `Oui ${frenchArticle(nick)} est tjr dispo, ${ship}. `;
+  // "Par contre" only makes sense after the clause about the current listing.
+  const p = here
+    ? input.oos
+      ? `Par contre ${other} n'est plus dispo pour le moment.`
+      : `Par contre je n'ai pas ${other} en stock actuellement.`
+    : input.oos
+      ? `Désolé, ${other} n'est plus dispo pour le moment.`
+      : `Désolé, je n'ai pas ${other} en stock actuellement.`;
   return `${here}${p}`;
 }
 
@@ -130,6 +162,17 @@ export function buildCatalogAvailabilityReply(input: {
   currentListingTitle?: string | null;
   /** Conversation listing still has stock (default true if unknown). */
   currentListingInStock?: boolean;
+  /**
+   * The conversation listing is the product the buyer asked about. False means
+   * they asked for another model, so "oui c'est tjr dispo" would answer a
+   * question nobody asked.
+   */
+  currentListingAnswersAsk?: boolean;
+  /**
+   * We could actually name the product asked for. When false we must not
+   * assert "non, pas en stock" — an unrecognised ask is a silence, not a no.
+   */
+  askedProductIdentified?: boolean;
   currentListingBody?: string | null;
   currentAnswerability?: ListingAnswerability;
   languageCode?: string;
@@ -161,6 +204,7 @@ export function buildCatalogAvailabilityReply(input: {
               shippingParts: extras,
               currentListingTitle: input.currentListingTitle,
               currentListingInStock: inStockHere,
+              currentListingAnswersAsk: input.currentListingAnswersAsk,
               languageCode: input.languageCode,
             })
           : formatForeignMulti({
@@ -169,6 +213,7 @@ export function buildCatalogAvailabilityReply(input: {
               shippingParts: extras,
               currentListingTitle: input.currentListingTitle,
               currentListingInStock: inStockHere,
+              currentListingAnswersAsk: input.currentListingAnswersAsk,
               languageCode: input.languageCode,
             });
       return {
@@ -181,6 +226,15 @@ export function buildCatalogAvailabilityReply(input: {
       input.hits.length > 0 ? "catalog_oos" : "catalog_not_found",
       "catalog_foreign=1",
     );
+    // "Je n'ai pas X" is a claim about our stock. Making it about a product we
+    // failed to identify is how a buyer gets told no on something we sell.
+    if (input.askedProductIdentified === false) {
+      return {
+        reply: null,
+        answerability: "unknown",
+        signals: [...signals, "catalog_ask_unidentified"],
+      };
+    }
     return {
       reply: wrapReply(
         formatForeignNo({
@@ -189,6 +243,7 @@ export function buildCatalogAvailabilityReply(input: {
           oos: input.hits.length > 0,
           currentListingTitle: input.currentListingTitle,
           currentListingInStock: inStockHere,
+          currentListingAnswersAsk: input.currentListingAnswersAsk,
           languageCode: input.languageCode,
         }),
         input.languageCode,
@@ -235,6 +290,13 @@ export function buildCatalogAvailabilityReply(input: {
   }
 
   if (input.hits.length > 0) {
+    if (input.askedProductIdentified === false) {
+      return {
+        reply: null,
+        answerability: "unknown",
+        signals: [...signals, "catalog_ask_unidentified"],
+      };
+    }
     signals.push("catalog_oos");
     return {
       reply: wrapReply(

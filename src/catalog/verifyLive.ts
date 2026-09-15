@@ -3,6 +3,11 @@ import {
   extractAskedModelLabel,
   matchListingVariation,
 } from "../analysis/listingEvidence.js";
+import {
+  extractAskedIdentity,
+  identityMatchesText,
+  isEmptyIdentity,
+} from "../product/identity.js";
 import type { ListingVariation } from "../ebay/tradingApi.js";
 import { getListingDetails } from "../ebay/tradingApi.js";
 import {
@@ -39,6 +44,7 @@ export async function verifyCatalogHitsLive(input: {
 }): Promise<CatalogHit[]> {
   const maxVerify = input.maxVerify ?? 3;
   const askedModel = extractAskedModelLabel(input.message);
+  const askedIdentity = extractAskedIdentity(input.message);
   const applePart =
     input.applePart?.toUpperCase() ||
     extractApplePartNumbers(input.message)[0] ||
@@ -55,6 +61,18 @@ export async function verifyCatalogHitsLive(input: {
     const listing = result.listing;
     const status = (listing.listingStatus ?? "").toLowerCase();
     const active = status === "active" || status === "";
+
+    // The live title is the authority on what this listing actually is. A hit
+    // that scored on shared words but names another model is dropped here — the
+    // stock check below would otherwise confirm a product nobody asked for.
+    if (!isEmptyIdentity(askedIdentity)) {
+      const titleBlob = [listing.title ?? "", hit.title]
+        .filter(Boolean)
+        .join(" \n ");
+      if (identityMatchesText(askedIdentity, titleBlob) === "mismatch") {
+        continue;
+      }
+    }
 
     if (seller) {
       try {

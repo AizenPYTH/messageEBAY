@@ -1,3 +1,4 @@
+import { extractAskedIdentity } from "../product/identity.js";
 import type { ListingDetails, ListingVariation } from "../ebay/tradingApi.js";
 import {
   SAME_DAY_BEFORE_15,
@@ -213,21 +214,25 @@ function formatVariationLabel(v: ListingVariation): string {
   return specs || v.sku || "variante";
 }
 
-/** "Surface Pro 8", "Pro 8", "iPhone 12", … */
+/**
+ * "Surface Pro 8", "iPhone 11 Pro Max", "Samsung Galaxy A13 4G", …
+ *
+ * Backed by the product identity parser, so it covers every brand the shop
+ * sells and keeps the full qualifier chain — the old regex captured a single
+ * qualifier and silently turned "iPhone 11 Pro Max" into "iPhone 11 Pro".
+ */
 export function extractAskedModelLabel(message: string): string | null {
   const raw = message.trim();
-  const surface = raw.match(/\bsurface\s*pro\s*(\d+)\b/i);
-  if (surface) return `Surface Pro ${surface[1]}`;
+  const identity = extractAskedIdentity(raw);
+  if (identity && identity.family && identity.base) {
+    const label = identity.label.trim();
+    if (label) return label;
+  }
+  // "écran Pro 8" — a Surface buyer who dropped the brand.
   const pro = raw.match(/\bpro\s*(\d+)\b/i);
   if (pro && /\b(écran|ecran|surface|microsoft)\b/i.test(raw)) {
     return `Surface Pro ${pro[1]}`;
   }
-  const iphone = raw.match(/\biphone\s*(\d{1,2}(?:\s*(?:pro|max|plus|mini))?)\b/i);
-  if (iphone) return `iPhone ${iphone[1]}`.replace(/\s+/g, " ");
-  const ipad = raw.match(/\bipad\s*(\d+|air|pro|mini)(?:\s*(\d+))?/i);
-  if (ipad) return ipad[0].replace(/\s+/g, " ");
-  const macbook = raw.match(/\bmacbook\s*(air|pro)?\s*(\d{1,2})?\b/i);
-  if (macbook && /\d/.test(macbook[0])) return macbook[0].replace(/\s+/g, " ");
   return null;
 }
 

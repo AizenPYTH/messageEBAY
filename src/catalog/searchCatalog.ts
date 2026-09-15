@@ -4,6 +4,13 @@ import { listVariationsForListingIds } from "../database/repositories/listingVar
 import {
   extractAskedModelLabel,
 } from "../analysis/listingEvidence.js";
+import {
+  extractAskedIdentity,
+  identityMatchesText,
+  isEmptyIdentity,
+  isGenericPartWord,
+  type ProductIdentity,
+} from "../product/identity.js";
 import type { ListingRow, ListingVariationRow } from "../database/types.js";
 import { verifyCatalogHitsLive } from "./verifyLive.js";
 
@@ -83,6 +90,16 @@ export function extractAskedProductPhrase(message: string): string | null {
   return phrase.length >= 3 ? phrase : null;
 }
 
+/**
+ * A token that actually identifies a product. "ecran" matches every screen in
+ * the shop, so it can never be the reason a listing is proposed to a buyer.
+ */
+export function isDistinctiveToken(token: string): boolean {
+  if (token.length < 3) return false;
+  if (STOP.has(token)) return false;
+  return !isGenericPartWord(token);
+}
+
 export function extractCatalogSearchTokens(message: string): string[] {
   const tokens: string[] = [];
   const model = extractAskedModelLabel(message);
@@ -101,7 +118,12 @@ export function extractCatalogSearchTokens(message: string): string[] {
     if (/^\d+$/.test(w) && w.length < 2) continue;
     if (!tokens.includes(w)) tokens.push(w);
   }
-  return tokens.slice(0, 8);
+  // The SQL filter only keeps the first few tokens — spend them on the ones
+  // that identify the product, not on "ecran" / "complet" / "noir".
+  return [
+    ...tokens.filter((t) => isDistinctiveToken(t)),
+    ...tokens.filter((t) => !isDistinctiveToken(t)),
+  ].slice(0, 8);
 }
 
 function variationLabel(v: ListingVariationRow): string {
@@ -136,11 +158,31 @@ function scoreHit(input: {
   variations: ListingVariationRow[];
   tokens: string[];
   askedModel: string | null;
+  askedIdentity: ProductIdentity | null;
 }): CatalogHit | null {
-  const hay = normalize(`${input.row.title ?? ""} ${input.row.search_text ?? ""}`);
+  const rowText = `${input.row.title ?? ""} ${input.row.search_text ?? ""}`;
+  const hay = normalize(rowText);
+
+  // Hard gate: a listing for another product is never a candidate, however many
+  // generic words it shares with the question.
+  if (!isEmptyIdentity(input.askedIdentity)) {
+    if (identityMatchesText(input.askedIdentity, rowText) === "mismatch") {
+      return null;
+    }
+  }
+
+  // At least one token must identify the product. Without this, every screen in
+  // the shop scores on "ecran" alone and the top one gets sent as an answer.
+  const distinctive = input.tokens.filter((t) => isDistinctiveToken(t));
+  if (distinctive.length > 0 && !distinctive.some((t) => hay.includes(t))) {
+    return null;
+  }
+
   let score = 0;
   for (const token of input.tokens) {
-    if (hay.includes(token)) score += token.length >= 4 ? 3 : 1;
+    if (!hay.includes(token)) continue;
+    if (!isDistinctiveToken(token)) continue;
+    score += token.length >= 4 ? 3 : 1;
   }
 
   let matchedVariationLabel: string | undefined;
@@ -195,6 +237,7 @@ export async function searchSellerCatalog(input: {
   if (tokens.length === 0) return [];
 
   const askedModel = extractAskedModelLabel(input.message);
+  const askedIdentity = extractAskedIdentity(input.message);
   const rows = await searchCatalogListings({
     sellerId: seller.id,
     tokens,
@@ -217,6 +260,7 @@ export async function searchSellerCatalog(input: {
       variations: byListing.get(row.id) ?? [],
       tokens,
       askedModel,
+      askedIdentity,
     });
     if (hit) hits.push(hit);
   }

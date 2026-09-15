@@ -24,6 +24,12 @@ import {
   askedFinishDiffersFromListing,
   stripReplyEnvelope,
 } from "../catalog/index.js";
+import {
+  describeIdentity,
+  extractAskedIdentity,
+  identityMatchesText,
+  isEmptyIdentity,
+} from "../product/identity.js";
 import type { ListingDetails } from "../ebay/tradingApi.js";
 import {
   collectPendingBuyerMessages,
@@ -71,13 +77,37 @@ function normalizeHay(value: string): string {
     .trim();
 }
 
-/** True when the conversation listing likely covers the buyer's product ask. */
+/** Everything the conversation listing says it is: title + variation specifics. */
+function listingIdentityBlob(listing: ListingDetails | undefined): string {
+  if (!listing) return "";
+  return [
+    listing.title ?? "",
+    ...listing.variations.flatMap((v) =>
+      v.specifics.map((spec) => `${spec.name} ${spec.value}`),
+    ),
+  ].join(" \n ");
+}
+
+/**
+ * True when the conversation listing is the product the buyer asked about.
+ *
+ * Identity decides whenever we can read a model out of both sides; the token
+ * heuristic below is only a fallback for asks that name no product at all.
+ */
 function listingCoversProductAsk(
   message: string,
   listing: ListingDetails | undefined,
 ): boolean {
   if (!listing) return false;
   if (askedFinishDiffersFromListing(message, listing.title)) return false;
+
+  const asked = extractAskedIdentity(message);
+  if (!isEmptyIdentity(asked)) {
+    const verdict = identityMatchesText(asked, listingIdentityBlob(listing));
+    if (verdict === "match") return true;
+    if (verdict === "mismatch") return false;
+  }
+
   const hay = normalizeHay(
     [
       listing.title ?? "",
@@ -510,6 +540,13 @@ export async function runAiPipeline(
   }
 
   const coversAsk = listingCoversProductAsk(latestText, context.listing);
+  const askedIdentity = extractAskedIdentity(latestText);
+  const askedProductIdentified = !isEmptyIdentity(askedIdentity);
+  // Only claim the conversation listing is "tjr dispo" when it is what they asked for.
+  const currentListingAnswersAsk =
+    !askedProductIdentified ||
+    identityMatchesText(askedIdentity, listingIdentityBlob(context.listing)) !==
+      "mismatch";
   const productPhrase = extractAskedProductPhrase(latestText);
   const appleParts = extractApplePartNumbers(latestText);
   const listingHay = normalizeHay(context.listing?.title ?? "");
@@ -573,23 +610,41 @@ export async function runAiPipeline(
     sellerUsername &&
     substantivePending.length <= 1
   ) {
-    const shouldSearchCatalog = foreignProductAsk || !coversAsk;
+    // A sold-out listing is exactly when the shop's other listings matter: the
+    // buyer must get the link to the same part elsewhere, not "on n'en a plus".
+    const currentListingSellable =
+      (context.listing?.quantityAvailable ?? 1) > 0 &&
+      (context.listing?.listingStatus ?? "Active").toLowerCase() === "active";
+    const shouldSearchCatalog =
+      foreignProductAsk || !coversAsk || (askedStock && !currentListingSellable);
 
     if (shouldSearchCatalog) {
       try {
-        const hits = await deps.searchCatalog({
+        const rawHits = await deps.searchCatalog({
           sellerUsername,
           message: latestText,
           excludeItemId: context.listing?.itemId,
           limit: 5,
         });
-        const askedLabel =
-          extractAskedModelLabel(latestText) || productPhrase || "cet article";
+        // The search port ranks on text overlap. Whatever it hands back, a
+        // listing for another model is never an answer — enforce that here so
+        // the guarantee does not depend on which search is wired in.
+        const hits = askedProductIdentified
+          ? rawHits.filter(
+              (hit) =>
+                identityMatchesText(askedIdentity, hit.title) !== "mismatch",
+            )
+          : rawHits;
+        const askedLabel = askedProductIdentified
+          ? describeIdentity(askedIdentity)
+          : extractAskedModelLabel(latestText) || productPhrase || "cet article";
         const catalog = buildCatalogAvailabilityReply({
           message: latestText,
           askedLabel,
           hits,
           foreignProductAsk,
+          askedProductIdentified,
+          currentListingAnswersAsk,
           currentListingTitle: context.listing?.title,
           currentListingInStock:
             (context.listing?.quantityAvailable ?? 1) > 0 &&

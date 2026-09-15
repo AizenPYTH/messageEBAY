@@ -156,3 +156,40 @@ describe("assessReplyQuality", () => {
     assert.ok(qa.issues.includes("robotic"));
   });
 });
+
+describe("assessReplyQuality — modèle demandé", () => {
+  it("blocks the reply that offered an iPhone on a Samsung question", () => {
+    const qa = assessReplyQuality({
+      reply: [
+        "Bonjour,",
+        "",
+        "Oui le écran est tjr dispo, envoi le jour même avant 15h (sauf samedi et dimanche). Oui on a iPhone 13 en stock, voici le lien : https://www.ebay.fr/itm/318081183144",
+        "",
+        "Cordialement,",
+        "SNOWOLF",
+      ].join("\n"),
+      currentAsk: "Vous avez un écran Samsung a 13 4g modèle a137F?",
+    });
+    assert.equal(qa.block, true);
+    assert.ok(qa.issues.includes("model_mismatch"));
+  });
+
+  it("allows explaining which model the listing actually is", () => {
+    const qa = assessReplyQuality({
+      reply:
+        "Bonjour,\n\nNon, sur cette annonce c'est le A135F, je n'ai pas le A137F.\n\nCordialement,\nSNOWOLF",
+      currentAsk: "Vous avez un écran Samsung a 13 4g modèle a137F?",
+      listingFactsText: "Ecran Complet Galaxy A13 4G (A135F)",
+    });
+    assert.ok(!qa.issues.includes("model_mismatch"));
+  });
+
+  it("allows the right model", () => {
+    const qa = assessReplyQuality({
+      reply:
+        "Bonjour,\n\nOui on a l'écran Galaxy A13 4G A137F en stock, voici le lien : https://www.ebay.fr/itm/1\n\nCordialement,\nSNOWOLF",
+      currentAsk: "Vous avez un écran Samsung a 13 4g modèle a137F?",
+    });
+    assert.ok(!qa.issues.includes("model_mismatch"));
+  });
+});
