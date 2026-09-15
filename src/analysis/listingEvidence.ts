@@ -30,7 +30,7 @@ const TOPIC_PATTERNS: Array<{
     label: "fonctionnel / ça marche",
     patterns: [
       /\bfonctionnel(le)?\b/i,
-      /\b[cç]a\s+marche\b/i,
+      /(?<![\w\u00c0-\u024f])[cç]a\s+marche\b/i,
       /\bmarche\s*\?/i,
       /\bworking\b/i,
       /\bworks\b/i,
@@ -74,27 +74,44 @@ const TOPIC_PATTERNS: Array<{
     label: "état",
     patterns: [
       /\b(en\s+)?bon\s+[ée]tat\b/i,
-      /\b[ée]tat\b/i,
+      /(?<![\w\u00c0-\u024f])[ée]tat\b/i,
       /\bcondition\b/i,
       /\bneuf\b/i,
       /\bnew\b/i,
       /\bgrade\s*[ab]\b/i,
     ],
   },
+  // This shop SELLS keyboards, batteries and chargers, so the bare noun is the
+  // product, not the question. Claiming the topic on the word alone turned
+  // "avez-vous encore un clavier A1989 ?" into a layout question and pushed a
+  // plain stock ask off the factual path entirely.
   {
     topic: "battery_original",
     label: "batterie d'origine",
-    patterns: [/\bbatterie\b/i, /\boriginal\s+battery\b/i, /\borigine\b/i],
+    patterns: [
+      /\boriginal\s+battery\b/i,
+      /\bbatterie\b[^.?!]{0,40}\b(origine|originale?|authentique|apple|cycles?|sant[ée]|capacit[ée])\b/i,
+      /\b(origine|originale?|authentique|cycles?|sant[ée])\b[^.?!]{0,40}\bbatterie\b/i,
+    ],
   },
   {
     topic: "charger_included",
     label: "chargeur fourni",
-    patterns: [/\bchargeur\b/i, /\bcharger\b/i],
+    patterns: [
+      /\b(chargeur|charger)\b[^.?!]{0,40}\b(fourni|inclus|livr[ée]|avec|dans\s+le\s+lot|included)\b/i,
+      /\b(fourni|inclus|livr[ée]\s+avec|comes?\s+with|included)\b[^.?!]{0,40}\b(chargeur|charger)\b/i,
+    ],
   },
   {
     topic: "keyboard_layout",
     label: "clavier AZERTY/QWERTY",
-    patterns: [/\bazerty\b/i, /\bqwerty\b/i, /\bclavier\b/i],
+    patterns: [
+      /\bazerty\b/i,
+      /\bqwerty\b/i,
+      /\bqwertz\b/i,
+      /\b(clavier|keyboard)\b[^.?!]{0,40}\b(disposition|layout|fran[çc]ais|belge|suisse|us|uk|international)\b/i,
+      /\b(disposition|layout)\b[^.?!]{0,40}\b(clavier|keyboard)\b/i,
+    ],
   },
   {
     topic: "compatible",
@@ -109,12 +126,19 @@ const TOPIC_PATTERNS: Array<{
   {
     topic: "unlocked",
     label: "débloqué",
-    patterns: [/\bd[ée]bloqu[ée]\b/i, /\bunlocked\b/i],
+    patterns: [/\bd[ée]bloqu[ée]e?s?(?![\\w\\u00c0-\\u024f])/i, /\bunlocked\b/i],
   },
   {
     topic: "firm_price",
     label: "prix ferme",
-    patterns: [/\bprix\s*ferme\b/i, /\bfirm\s+price\b/i],
+    patterns: [
+      /\bprix\s*ferme\b/i,
+      /\bfirm\s+price\b/i,
+      /\bn[ée]gociable\b/i,
+      /\b(meilleur|dernier)\s+prix\b/i,
+      /\b(remise|r[ée]duction|rabais|un\s+geste)\b/i,
+      /\bbest\s+price\b/i,
+    ],
   },
   {
     topic: "fast_shipping",
@@ -652,7 +676,7 @@ function evaluateTopicAgainstListing(
         /\bneuf(ve)?\b/i,
         /\bneuv[ea]\b/i,
         /\bnew\b/i,
-        /\breconditionn[ée]\b/i,
+        /\breconditionn[ée]e?s?(?![\\w\\u00c0-\\u024f])/i,
         /\brefurbish/i,
         /\bgrade\s*a\b/i,
         /\bg[ée]n[ée]rique\b/i,
@@ -774,7 +798,7 @@ function evaluateTopicAgainstListing(
   }
 
   if (topic === "unlocked") {
-    if (hasAny(corpus, [/\bd[ée]bloqu[ée]\b/i, /\bunlocked\b/i])) {
+    if (hasAny(corpus, [/\bd[ée]bloqu[ée]e?s?(?![\\w\\u00c0-\\u024f])/i, /\bunlocked\b/i])) {
       return {
         answerability: "direct_yes",
         signals: ["signal=unlocked"],

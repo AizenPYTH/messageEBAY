@@ -10,7 +10,7 @@ import type {
 
 const SIMPLE_CLOSED_PATTERNS: RegExp[] = [
   /\bfonctionnel(le)?\b/i,
-  /\b[cç]a\s+marche\b/i,
+  /(?<![\w\u00c0-\u024f])[cç]a\s+marche\b/i,
   /\bmarche\s*\?/i,
   /\bdisponible\b/i,
   /\btoujours\s+(en\s+vente|là|dispo|disponible)\b/i,
@@ -22,8 +22,8 @@ const SIMPLE_CLOSED_PATTERNS: RegExp[] = [
   /\bg[ée]n[ée]rique\b/i,
   /\bgeneric\b/i,
   /\bofficiel(?:le)?\b/i,
-  /\bd[ée]bloqu[ée]\b/i,
-  /\b[ée]tat\b/i,
+  /\bd[ée]bloqu[ée]e?s?(?![\\w\\u00c0-\\u024f])/i,
+  /(?<![\w\u00c0-\u024f])[ée]tat\b/i,
   /\bprix\s*ferme\b/i,
   /\benvoi\s+rapide\b/i,
   /\blivraison\s+rapide\b/i,
@@ -53,7 +53,7 @@ const RETURN_PATTERNS: RegExp[] = [
   /\brembours/i,
   /\breturn\b/i,
   /\brefund\b/i,
-  /\b[ée]change\b/i,
+  /(?<![\w\u00c0-\u024f])[ée]change\b/i,
 ];
 
 const AFTER_SALES_PATTERNS: RegExp[] = [

@@ -1,6 +1,7 @@
 import { detectAllListingTopics } from "./listingEvidence.js";
 import { isBuyerReturnShipped } from "./sellerCase.js";
 import { isInboundSellOffer } from "./sellerCase.js";
+import { isAboutExistingOrder } from "./orderContext.js";
 
 /**
  * Factual shortcuts (stock templates, catalog links, Apple SKU replies)
@@ -66,6 +67,8 @@ export function blocksFactualShortcut(text: string | undefined): boolean {
   if (mentionsReturnPolicyAsk(raw)) return true;
   if (isBuyerReturnShipped(raw)) return true;
   if (isInboundSellOffer(raw)) return true;
+  // An order already placed is about that order — never a catalogue answer.
+  if (isAboutExistingOrder(raw)) return true;
   if (isBuyerOwnDeviceContext(raw)) return true;
   if (isDiagnosticAsk(raw)) return true;
   const words = raw.split(/\s+/).filter(Boolean).length;

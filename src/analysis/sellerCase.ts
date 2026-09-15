@@ -43,7 +43,7 @@ const RETURN_LABEL_PATTERNS: RegExp[] = [
   /\bbordereau\b/i,
   /\bbon\s+(de\s+)?retour\b/i,
   /\bbons?\s+de\s+retour\b/i,
-  /\b[ée]tiquettes?\s+(de\s+)?retour\b/i,
+  /(?<![\w\u00c0-\u024f])[ée]tiquettes?\s+(de\s+)?retour\b/i,
   /\blabel\s+(de\s+)?retour\b/i,
   /\breturn\s+label\b/i,
   /\bprepaid\s+return\b/i,
@@ -135,7 +135,7 @@ const DAMAGE_WORDS: RegExp[] = [
   /[ée]cras[ée]e?s?/i,
   /flexgate/i,
   /s['’][ée]teint/i,
-  /\b[ée]teint\b/i,
+  /(?<![\w\u00c0-\u024f])[ée]teint\b/i,
 ];
 
 /**
@@ -150,7 +150,7 @@ const POST_PURCHASE_DAMAGE: RegExp[] = [
   /\b(livr[ée]|colis|commande).{0,60}(cass|endommag|d[ée]fect|ne\s+fonctionne|hs|broken|ab[iî]m)/i,
   /\bdead\s+on\s+arrival\b/i,
   /\bdoa\b/i,
-  /\bà\s+l['’]ouverture\b.{0,40}(cass|endommag|d[ée]fect|hs)/i,
+  /(?<![\w\u00c0-\u024f])à\s+l['’]ouverture\b.{0,40}(cass|endommag|d[ée]fect|hs)/i,
   /\bj['’]ai\s+re[cç]u\b.{0,80}(ne\s+fonctionne|cass|endommag|d[ée]fect|hs|ab[iî]m)/i,
   /\barticle\s+re[cç]u\b.{0,60}(cass|endommag|d[ée]fect|hs|ab[iî]m)/i,
   /re[cç]u.{0,220}(flexgate|s['’][ée]teint|[ée]teint|probl[eè]me)/i,
@@ -300,7 +300,7 @@ export function isInboundSellOffer(text: string | undefined): boolean {
     /\ble lot (comprend|inclut)\b/i,
     /\bje vends\b/i,
     /\bj['’]ai .{0,80}\b(à vendre|a vendre)\b/i,
-    /\b(article|lot|stock)\b.{0,40}\bà vendre\b/i,
+    /\b(article|lot|stock)\b.{0,40}(?<![\w\u00c0-\u024f])à vendre\b/i,
     /\bwanted to (check|see) if you (might be|are) interested\b/i,
     /\bcheck if you might be interested\b/i,
     /\bmake me an offer for the (entire )?lot\b/i,

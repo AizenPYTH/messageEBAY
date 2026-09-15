@@ -229,3 +229,102 @@ describe("domdelaloge — sold-out listing, stock elsewhere", () => {
     assert.doesNotMatch(reply, /plus (aucun|de) A1989/i);
   });
 });
+
+describe("mob205 — iPhone SE aux enchères", () => {
+  const auction = listing({
+    itemId: "318028100020",
+    title: "iPhone SE 64Go",
+    listingType: "Chinese",
+    bidCount: 3,
+    price: "51.00",
+    currency: "EUR",
+  });
+
+  it("refuses Buy It Now, gives the live price, keeps payment on eBay", async () => {
+    const reply = await run({
+      listing: auction,
+      messages: buyerMessages([
+        "Bonjour, achat immédiat possible ? Quel prix, et vous acceptez PayPal ?",
+      ]),
+    });
+    assert.match(reply, /Non, c'est une enchère/i);
+    assert.match(reply, /51 €/);
+    assert.match(reply, /uniquement sur eBay/i);
+  });
+});
+
+describe("amhelat_0 — offres sur un écran 16\" à 459 €", () => {
+  const screen = listing({
+    itemId: "318028100021",
+    title: "Ecran MacBook Pro 16 Grade B A2141",
+    price: "459.00",
+    currency: "EUR",
+  });
+
+  it("holds the price without jargon and without asking for another offer", async () => {
+    for (const ask of ["je vous en propose 340 €", "C'est quoi votre dernier prix ?"]) {
+      const reply = await run({ listing: screen, messages: buyerMessages([ask]) });
+      assert.match(reply, /459 €/, ask);
+      assert.doesNotMatch(reply, /n'est pas autoris/i, ask);
+      assert.doesNotMatch(reply, /faites une (proposition|offre)/i, ask);
+      assert.doesNotMatch(reply, /Grade A/i, ask);
+    }
+  });
+});
+
+describe("arapu17 — commande déjà passée", () => {
+  it("never answers a tracking question with another listing", async () => {
+    const reply = await run({
+      listing: listing({ itemId: "318028100022", title: "Topcase MacBook Pro 14 A2442" }),
+      messages: buyerMessages([
+        "Bonjour, avez-vous des retours par rapport à ma commande ? Pouvez-vous expédier ce que j'ai commandé",
+      ]),
+      catalog: [
+        { itemId: "318028100099", title: "Clavier MacBook Pro 13 A1989", quantityAvailable: 5 },
+      ],
+      // The exact shape of the bad reply that went out on this thread.
+      llmDraft:
+        "Bonjour,\n\nOui on a retours par rapport à ma commande en stock, voici le lien : https://www.ebay.fr/itm/318028100099\n\nCordialement,\nSNOWOLF",
+    });
+    assert.equal(reply, "");
+  });
+});
+
+describe("mamulti0 — ce qu'il y a dans le lot", () => {
+  it("leaves it to the seller when only the photos could answer", async () => {
+    const reply = await run({
+      listing: listing({
+        itemId: "318028100023",
+        title: "Topcase MacBook Pro 13 A2338 Gris",
+        descriptionText: "Topcase complet pour A2338.",
+      }),
+      messages: buyerMessages([
+        "Bonjour, est-ce que la Touch Bar et le trackpad sont inclus ?",
+      ]),
+    });
+    assert.equal(reply, "");
+  });
+});
+
+describe("hl5198 — le fil est clos", () => {
+  it("says nothing more after 'Ok merci'", async () => {
+    const reply = await run({
+      listing: listing({ itemId: "318028100024", title: "SSD 512 Go" }),
+      messages: buyerMessages(["Vous pouvez annuler la commande ?", "Ok merci"]),
+    });
+    assert.equal(reply, "");
+  });
+
+  it("still answers a question asked after an ack", async () => {
+    const reply = await run({
+      listing: listing({
+        itemId: "318028100025",
+        title: "Ecran Complet iPhone 13 (Incell)",
+      }),
+      messages: buyerMessages(["Ok merci", "Et vous avez l'écran iPhone 13 ?"]),
+      catalog: [],
+      llmDraft: "Bonjour,\n\nOui c'est dispo.\n\nCordialement,\nSNOWOLF",
+    });
+    assert.notEqual(reply, "");
+  });
+});

@@ -32,7 +32,7 @@ const REPAIR_LISTING: RegExp[] = [
   /\bpour\s+pi[eè]ces?\b/i,
   /\bred[ée]marre\s+en\s+boucle\b/i,
   /\bbootloop\b/i,
-  /\b[ée]cran\s+(lcd\s+)?cass/i,
+  /(?<![\w\u00c0-\u024f])[ée]cran\s+(lcd\s+)?cass/i,
   /\bne\s+s['’]?allume\s+plus\b/i,
 ];
 
@@ -60,7 +60,7 @@ export function isRepairListing(text: string | undefined): boolean {
     /\bpour\s+r[ée]paration\b/i.test(raw) === false &&
     /\bbootloop\b/i.test(raw) === false &&
     /\bred[ée]marre\s+en\s+boucle\b/i.test(raw) === false &&
-    /\b[ée]cran\s+(lcd\s+)?cass/i.test(raw) === false &&
+    /(?<![\w\u00c0-\u024f])[ée]cran\s+(lcd\s+)?cass/i.test(raw) === false &&
     (/\bpi[eè]ce\s+d[ée]tach/i.test(raw) ||
       /\bgrade\s*[ab]\b/i.test(raw) ||
       /\bg[ée]n[ée]rique\b/i.test(raw))

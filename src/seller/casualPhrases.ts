@@ -22,9 +22,9 @@ export function shippingPhraseFromDispatch(
 }
 
 /** Short nickname for the conversation listing ("clavier", "écran"…). */
-export function casualProductNickname(title: string | undefined | null): string {
-  const raw = title?.trim() ?? "";
-  const t = raw
+/** The part this listing sells, when the title names one we recognise. */
+export function knownPartNickname(title: string | undefined | null): string | null {
+  const t = (title ?? "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
@@ -35,7 +35,13 @@ export function casualProductNickname(title: string | undefined | null): string 
   if (/touchpad|trackpad/.test(t)) return "touchpad";
   if (/chargeur|charger/.test(t)) return "chargeur";
   if (/coque|chassis|ch[aâ]ssis/.test(t)) return "coque";
-  const words = raw
+  return null;
+}
+
+export function casualProductNickname(title: string | undefined | null): string {
+  const known = knownPartNickname(title);
+  if (known) return known;
+  const words = (title?.trim() ?? "")
     .replace(/[^\p{L}\p{N}\s]/gu, " ")
     .split(/\s+/)
     .filter((w) => w.length > 2)
@@ -50,17 +56,40 @@ export function casualProductNickname(title: string | undefined | null): string 
  * naming the ask while linking the top-scoring listing is what produced
  * "on a iPhone 13 en stock" with a Samsung link underneath.
  */
-export function casualCatalogLabel(title: string, askedLabel?: string | null): string {
+export function casualCatalogLabel(
+  title: string,
+  askedLabel?: string | null,
+  options?: { french?: boolean },
+): string {
   const t = title.toLowerCase();
   if (/lyca|sim/.test(t)) return "carte sim Lyca";
   if (askedLabel?.trim() && /puce|lyca|sim/.test(askedLabel.trim().toLowerCase())) {
     return "carte sim Lyca";
   }
-  const fromTitle = productLabelFromTitle(title);
-  if (fromTitle) return fromTitle;
+  const model = productLabelFromTitle(title);
+  if (model) {
+    // "MacBook Pro 13" alone does not say what we are selling — "le clavier
+    // MacBook Pro 13" does.
+    const part = options?.french ? knownPartNickname(title) : null;
+    if (part && !model.toLowerCase().includes(part.toLowerCase())) {
+      return `${frenchArticle(part)} ${model}`;
+    }
+    return model;
+  }
   if (askedLabel?.trim()) return askedLabel.trim();
   // First ~6 words max
   return title.split(/\s+/).slice(0, 6).join(" ");
+}
+
+/** "écran" → "l'écran", "clavier" → "le clavier". */
+export function frenchArticle(noun: string): string {
+  const first = noun
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .charAt(0)
+    .toLowerCase();
+  return /[aeiouy]/.test(first) ? `l'${noun}` : `le ${noun}`;
 }
 
 /** "Ecran Complet iPhone 13 (Incell)" → "iPhone 13". */

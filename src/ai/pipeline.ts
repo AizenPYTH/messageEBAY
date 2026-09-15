@@ -56,8 +56,19 @@ import {
   isShippingCostAsk,
   replyInventsFreeShipping,
 } from "../shipping/shippingCost.js";
+import {
+  formatAuctionReply,
+  isAuctionListing,
+  isBuyItNowAsk,
+  isOffPlatformPaymentAsk,
+} from "../analysis/auction.js";
+import { unprovableContentsAsk } from "../analysis/contentsAsk.js";
+import {
+  formatFirmPriceReply,
+  isPriceNegotiation,
+} from "../analysis/priceOffer.js";
 import { isBuyerUpset } from "../prompt/policyRules.js";
-import { isNoReplyNeeded } from "../analysis/needsReply.js";
+import { isClosingAck, isNoReplyNeeded } from "../analysis/needsReply.js";
 import { allowFactualShortcut, blocksFactualShortcut } from "../analysis/factualShortcut.js";
 import { isAbstainReply } from "./abstain.js";
 import { reasonThenReply } from "./reasonThenReply.js";
@@ -313,10 +324,18 @@ export async function runAiPipeline(
     currentAskText: askNow,
   };
 
+  // The buyer's last word closes the thread. Older unanswered messages do not
+  // reopen it: relaunching after "Ok merci" is how hl5198 got a reply about an
+  // SSD and a cancellation they had already confirmed.
+  const lastPending = pendingBuyerMessages[pendingBuyerMessages.length - 1];
+  const threadClosedByBuyer =
+    pendingBuyerMessages.length > 0 && isClosingAck(lastPending?.messageBody);
+
   // Nothing useful to answer (merci / ok / bonjour seul / vide).
   if (
-    substantivePending.length === 0 &&
-    isNoReplyNeeded(context.latestMessage?.messageBody ?? latestText)
+    threadClosedByBuyer ||
+    (substantivePending.length === 0 &&
+      isNoReplyNeeded(context.latestMessage?.messageBody ?? latestText))
   ) {
     return baseResult(
       {
@@ -537,6 +556,74 @@ export async function runAiPipeline(
         escalated: false,
       });
     }
+  }
+
+  // Enchère : pas d'achat immédiat à promettre, et le paiement reste sur eBay.
+  if (isAuctionListing(context.listing)) {
+    const auctionReply = formatAuctionReply({
+      listing: context.listing,
+      askedBuyItNow: isBuyItNowAsk(latestText) || isBuyItNowAsk(askNow),
+      askedOffPlatformPayment:
+        isOffPlatformPaymentAsk(latestText) || isOffPlatformPaymentAsk(askNow),
+      languageCode: responsePlan.languageCode,
+      signature: sellerProfile?.signature,
+    });
+    if (auctionReply) {
+      return baseResult(common, {
+        systemPrompt: "",
+        userPrompt: "auction:format",
+        reply: auctionReply,
+        escalated: false,
+      });
+    }
+  }
+
+  // Offre / négociation : ferme sur le tarif, souple sur le ton.
+  if (
+    isPriceNegotiation(latestText) &&
+    !isAuctionListing(context.listing) &&
+    !blocksFactualShortcut(latestText)
+  ) {
+    const firm = formatFirmPriceReply({
+      listingPrice: context.listing?.price,
+      currency: context.listing?.currency,
+      languageCode: responsePlan.languageCode,
+      signature: sellerProfile?.signature,
+    });
+    if (firm) {
+      return baseResult(common, {
+        systemPrompt: "",
+        userPrompt: "price:firm",
+        reply: firm,
+        escalated: false,
+      });
+    }
+  }
+
+  // « Il y a la Touch Bar ? » — c'est sur les photos, qu'on ne sait pas lire.
+  // Un « non » inventé fait perdre la vente : le vendeur répond lui-même.
+  const contents = unprovableContentsAsk({
+    message: askNow || latestText,
+    listing: context.listing,
+  });
+  if (contents.unprovable) {
+    return baseResult(
+      {
+        ...common,
+        responsePlan: {
+          ...responsePlan,
+          needsSellerIntervention: true,
+          escalationReason: "photo_question",
+          escalationLabel: `Contenu du lot demandé (${contents.components.join(", ")}) — pas dans l'annonce, seules les photos le disent`,
+        },
+      },
+      {
+        systemPrompt: "",
+        userPrompt: `skip:contents_not_in_listing:${contents.components.join(",")}`,
+        reply: "",
+        escalated: true,
+      },
+    );
   }
 
   const coversAsk = listingCoversProductAsk(latestText, context.listing);

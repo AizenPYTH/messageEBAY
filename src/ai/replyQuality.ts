@@ -1,4 +1,11 @@
 import { isInvoiceAsk, isLocalPickupAsk, isRepairListing, isReturnAddressAsk, replyHasPlaceholder, replyLeaksReturnAddress } from "../analysis/sellerOps.js";
+import { auctionHasBuyItNow, isAuctionListing } from "../analysis/auction.js";
+import { replyDeniesUnprovenComponent } from "../analysis/contentsAsk.js";
+import {
+  isAboutExistingOrder,
+  replyPushesOtherListing,
+} from "../analysis/orderContext.js";
+import { replyInvitesNegotiation } from "../analysis/priceOffer.js";
 import { detectAllListingTopics } from "../analysis/listingEvidence.js";
 import type { ClosedQuestionTopic } from "../analysis/types.js";
 import type { ListingDetails } from "../ebay/tradingApi.js";
@@ -23,6 +30,8 @@ export type ReplyQualityIssue =
   | "too_long"
   | "answers_old_topic"
   | "model_mismatch"
+  | "wrong_listing"
+  | "policy_breach"
   | "robotic";
 
 export type ReplyQualityResult = {
@@ -129,6 +138,7 @@ export function assessReplyQuality(input: {
 
   const ask = input.currentAsk.replace(/\s+/g, " ").trim();
   const body = bodyWithoutSignature(input.reply);
+  const listingBlob = `${input.listing?.title ?? ""}\n${input.listing?.descriptionText ?? ""}\n${input.listingFactsText ?? ""}`;
   if (!ask || !body) {
     return { ok: true, block: false, issues: [], reasons: [] };
   }
@@ -201,6 +211,81 @@ export function assessReplyQuality(input: {
     }
   }
 
+  // Price is firm, but a refusal must not read like a terms-of-service page,
+  // nor invite the round of offers the seller will turn down anyway.
+  if (replyInvitesNegotiation(body)) {
+    issues.push("policy_breach");
+    reasons.push(
+      "prix : ni jargon (« la négociation n'est pas autorisée ») ni invitation à négocier (« faites une proposition », « discutons du prix »). Dire simplement : désolé, le prix c'est X €, on peut pas vraiment descendre.",
+    );
+  }
+
+  // Never promise a Buy It Now an auction does not have, and never a payment
+  // outside eBay.
+  if (isAuctionListing(input.listing) && !auctionHasBuyItNow(input.listing)) {
+    if (
+      /\bachat\s+imm[ée]diat\b/i.test(body) &&
+      !/\b(non|pas d['’]achat imm[ée]diat|no buy it now)\b/i.test(body)
+    ) {
+      issues.push("policy_breach");
+      reasons.push(
+        "cette annonce est une enchère : pas d'achat immédiat. Dire non, donner le prix actuel, et renvoyer vers l'enchère sur eBay.",
+      );
+    }
+  }
+  if (
+    /\b(paypal|virement|esp[èe]ces|hors\s+ebay)\b/i.test(body) &&
+    !/\b(uniquement|seulement|only)\b[^.]{0,40}\bebay\b/i.test(body) &&
+    !/\bebay\b[^.]{0,40}\b(uniquement|seulement|only)\b/i.test(body)
+  ) {
+    issues.push("policy_breach");
+    reasons.push(
+      "paiement : jamais PayPal / virement / hors eBay. Répondre que le paiement se fait uniquement sur eBay.",
+    );
+  }
+
+  // A question about an order already placed is about that order.
+  if (
+    isAboutExistingOrder(ask) &&
+    replyPushesOtherListing({
+      reply: body,
+      ...(input.listing?.itemId ? { currentItemId: input.listing.itemId } : {}),
+    })
+  ) {
+    issues.push("wrong_listing");
+    reasons.push(
+      "le client parle d'une commande déjà passée : rester sur cette commande (suivi / expédition). Interdit de coller un lien catalogue ou « on a X en stock ».",
+    );
+  }
+
+  // The photos decide what is in the box, and we cannot see them.
+  if (
+    replyDeniesUnprovenComponent({
+      reply: body,
+      message: ask,
+      listing: input.listing,
+    })
+  ) {
+    issues.push("invented");
+    reasons.push(
+      "contenu du lot : l'annonce ne dit rien et les photos ne sont pas lisibles ici. Ne pas répondre non — laisser le vendeur répondre.",
+    );
+  }
+
+  // Grade B sold as Grade A is a description the buyer can hold us to.
+  const listingGrade = listingBlob.match(/\bgrade\s*([ab])\b/i)?.[1];
+  const replyGrade = body.match(/\bgrade\s*([ab])\b/i)?.[1];
+  if (
+    listingGrade &&
+    replyGrade &&
+    listingGrade.toLowerCase() !== replyGrade.toLowerCase()
+  ) {
+    issues.push("invented");
+    reasons.push(
+      `l'annonce est Grade ${listingGrade.toUpperCase()} : ne pas parler de Grade ${replyGrade.toUpperCase()}.`,
+    );
+  }
+
   if (ROBOT_NO_INFO.test(body)) {
     issues.push("robotic");
     reasons.push(
@@ -222,7 +307,6 @@ export function assessReplyQuality(input: {
     );
   }
 
-  const listingBlob = `${input.listing?.title ?? ""}\n${input.listing?.descriptionText ?? ""}\n${input.listingFactsText ?? ""}`;
   if (UNTESTED_HEDGE.test(body) && !isRepairListing(listingBlob)) {
     issues.push("invented");
     reasons.push(
@@ -282,6 +366,8 @@ export function assessReplyQuality(input: {
       i === "invented" ||
       i === "answers_old_topic" ||
       i === "model_mismatch" ||
+      i === "wrong_listing" ||
+      i === "policy_breach" ||
       i === "robotic" ||
       i === "misses_question",
   );

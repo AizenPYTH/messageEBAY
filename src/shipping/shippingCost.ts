@@ -15,7 +15,7 @@ const COST_ASK: RegExp[] = [
 
 const ASK_FREE: RegExp[] = [
   /\b0[,.]0\s*(€|eur)?\b/i,
-  /\b[àa]\s+0\s*(€|eur)?\b/i,
+  /(?<![\w\u00c0-\u024f])[àa]\s+0\s*(€|eur)?\b/i,
   /\bgratuit[e]?\b/i,
   /\bfree\s+ship/i,
   /\blivraison\s+gratuite\b/i,

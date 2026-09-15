@@ -22,6 +22,23 @@ const COURTESY_CLOSE: RegExp[] = [
   /parfait\s*[.!]?\s*merci/i,
 ];
 
+/**
+ * "Ok merci", "parfait", "bonne journée" — the buyer is closing the thread.
+ *
+ * A greeting is deliberately NOT one of these: "Bonjour" sent after a question
+ * still leaves the question open.
+ */
+const CLOSING_ACK =
+  /^(merci|thanks|thank you|thx|ok(ay)?|d['’]?accord|parfait|super|top|nickel|cool|tr[eè]s bien|bien re[çc]u|re[çc]u|compris|noted|ça marche|ca marche|au revoir|[àa] bient[ôo]t|bye|bonne\s+(journ[ée]e|soir[ée]e|continuation))\b/i;
+
+export function isClosingAck(text: string | undefined): boolean {
+  const raw = (text ?? "").replace(/\s+/g, " ").trim();
+  if (!raw) return false;
+  if (raw.includes("?")) return false;
+  if (raw.split(/\s+/).filter(Boolean).length > 8) return false;
+  return CLOSING_ACK.test(raw) || COURTESY_CLOSE.some((re) => re.test(raw));
+}
+
 export function isNoReplyNeeded(text: string | undefined): boolean {
   const raw = (text ?? "").replace(/\s+/g, " ").trim();
   if (!raw) return true;

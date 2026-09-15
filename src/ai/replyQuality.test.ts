@@ -193,3 +193,100 @@ describe("assessReplyQuality — modèle demandé", () => {
     assert.ok(!qa.issues.includes("model_mismatch"));
   });
 });
+
+describe("assessReplyQuality — règles boutique", () => {
+  const listing = (partial: Record<string, unknown> = {}) =>
+    ({
+      itemId: "3",
+      itemSpecifics: [],
+      variations: [],
+      shippingOptions: [],
+      rawAvailable: true,
+      ...partial,
+    }) as never;
+
+  it("blocks a catalogue link answering a question about an existing order", () => {
+    const qa = assessReplyQuality({
+      reply:
+        "Bonjour,\n\nOui on a le clavier en stock, voici le lien : https://www.ebay.fr/itm/999\n\nCordialement,\nSNOWOLF",
+      currentAsk:
+        "avez-vous des retours par rapport à ma commande ? Pouvez-vous expédier ce que j'ai commandé",
+      listing: listing({ title: "Topcase MacBook Pro 14 A2442" }),
+    });
+    assert.equal(qa.block, true);
+    assert.ok(qa.issues.includes("wrong_listing"));
+  });
+
+  it("blocks an invented 'just the top case'", () => {
+    const qa = assessReplyQuality({
+      reply: "Hi,\n\nNo, just the top case, the Touch Bar is not included.\n\nBest regards",
+      currentAsk: "Is the Touch Bar included ?",
+      listing: listing({
+        title: "Topcase MacBook Pro 13 A2338",
+        descriptionText: "Topcase complet pour A2338.",
+      }),
+    });
+    assert.equal(qa.block, true);
+    assert.ok(qa.issues.includes("invented"));
+  });
+
+  it("blocks both the legal jargon and the invitation to haggle", () => {
+    for (const body of [
+      "La négociation n'est pas autorisée sur cette annonce.",
+      "Faites une proposition et nous pourrons discuter du prix.",
+    ]) {
+      const qa = assessReplyQuality({
+        reply: `Bonjour,\n\n${body}\n\nCordialement,\nSNOWOLF`,
+        currentAsk: "je vous en propose 340 €",
+      });
+      assert.equal(qa.block, true, body);
+      assert.ok(qa.issues.includes("policy_breach"), body);
+    }
+  });
+
+  it("lets the firm, human refusal through", () => {
+    const qa = assessReplyQuality({
+      reply:
+        "Bonjour,\n\nDésolé, le prix c'est 459 €, on peut pas vraiment descendre.\n\nCordialement,\nSNOWOLF",
+      currentAsk: "je vous en propose 340 €",
+    });
+    assert.equal(qa.block, false);
+  });
+
+  it("blocks a Buy It Now promised on an auction", () => {
+    const qa = assessReplyQuality({
+      reply: "Bonjour,\n\nOui l'achat immédiat est possible.\n\nCordialement,\nSNOWOLF",
+      currentAsk: "achat immédiat possible ?",
+      listing: listing({ title: "iPhone SE", listingType: "Chinese", bidCount: 3 }),
+    });
+    assert.equal(qa.block, true);
+    assert.ok(qa.issues.includes("policy_breach"));
+  });
+
+  it("blocks PayPal, and allows sending the buyer back to eBay", () => {
+    assert.equal(
+      assessReplyQuality({
+        reply: "Bonjour,\n\nOui vous pouvez payer par PayPal.\n\nCordialement,\nSNOWOLF",
+        currentAsk: "vous acceptez PayPal ?",
+      }).block,
+      true,
+    );
+    assert.equal(
+      assessReplyQuality({
+        reply:
+          "Bonjour,\n\nLe paiement se fait uniquement sur eBay.\n\nCordialement,\nSNOWOLF",
+        currentAsk: "vous acceptez PayPal ?",
+      }).block,
+      false,
+    );
+  });
+
+  it("blocks selling a Grade B listing as Grade A", () => {
+    const qa = assessReplyQuality({
+      reply: "Bonjour,\n\nC'est un écran Grade A, très bon état.\n\nCordialement,\nSNOWOLF",
+      currentAsk: "c'est quel état ?",
+      listing: listing({ title: "Ecran MacBook Pro 16 Grade B A2141" }),
+    });
+    assert.equal(qa.block, true);
+  });
+});

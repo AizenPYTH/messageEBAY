@@ -34,6 +34,12 @@ export type ListingDetails = {
   /** Remaining stock at listing level (Quantity - QuantitySold), when known. */
   quantityAvailable?: number;
   listingStatus?: string;
+  /** eBay listing format: "Chinese" = auction, "FixedPriceItem" = buy it now. */
+  listingType?: string;
+  /** Bids received, for auctions. */
+  bidCount?: number;
+  /** Set when the auction also offers Buy It Now. */
+  buyItNowPrice?: string;
   location?: string;
   itemSpecifics: Array<{ name: string; value: string }>;
   /** Multi-SKU / model / color variations with per-variant stock. */
@@ -114,6 +120,10 @@ function parseShippingOptions(itemXml: string): ListingShippingOption[] {
   return options.slice(0, 8);
 }
 
+function sellingStatusEarly(itemXml: string): string {
+  return firstTag(itemXml, "SellingStatus") ?? itemXml;
+}
+
 /** Exported for tests — parse GetItem success XML into ListingDetails. */
 export function parseGetItemListing(xml: string, itemId: string): ListingDetails {
   const itemXml = firstTag(xml, "Item") ?? xml;
@@ -126,6 +136,11 @@ export function parseGetItemListing(xml: string, itemId: string): ListingDetails
     firstTag(itemXml, "CurrentPrice") ||
     firstTag(itemXml, "StartPrice") ||
     firstTag(itemXml, "BuyItNowPrice");
+  const listingType =
+    firstTag(firstTag(itemXml, "ListingDetails") ?? "", "ListingType") ||
+    firstTag(itemXml, "ListingType");
+  const bidCount = toInt(firstTag(sellingStatusEarly(itemXml), "BidCount"));
+  const buyItNowPrice = firstTag(itemXml, "BuyItNowPrice");
 
   const quantity = firstTag(itemXml, "Quantity");
   const sellingStatus = firstTag(itemXml, "SellingStatus");
@@ -157,6 +172,9 @@ export function parseGetItemListing(xml: string, itemId: string): ListingDetails
     condition: firstTag(itemXml, "ConditionDisplayName"),
     conditionId: firstTag(itemXml, "ConditionID"),
     price,
+    ...(listingType ? { listingType } : {}),
+    ...(bidCount !== undefined ? { bidCount } : {}),
+    ...(buyItNowPrice ? { buyItNowPrice } : {}),
     currency: firstTag(itemXml, "Currency"),
     quantity,
     quantitySold,

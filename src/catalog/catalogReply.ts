@@ -2,6 +2,7 @@ import type { ListingAnswerability } from "../analysis/types.js";
 import {
   casualCatalogLabel,
   casualProductNickname,
+  frenchArticle,
   SAME_DAY_BEFORE_15,
 } from "../seller/casualPhrases.js";
 import type { CatalogHit } from "./searchCatalog.js";
@@ -23,17 +24,6 @@ function wrapReply(
     : `Bonjour,\n\n${body}\n\n${sig}`;
 }
 
-/** "écran" → "l'écran", "clavier" → "le clavier". */
-function frenchArticle(noun: string): string {
-  const first = noun
-    .trim()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .charAt(0)
-    .toLowerCase();
-  return /[aeiouy]/.test(first) ? `l'${noun}` : `le ${noun}`;
-}
-
 function shippingBit(parts: string[]): string {
   if (parts.length === 0) return SAME_DAY_BEFORE_15;
   return parts.join(" ").replace(/\.$/, "");
@@ -50,7 +40,8 @@ function formatForeignYes(input: {
   languageCode?: string;
 }): string {
   const hit = input.hit;
-  const other = casualCatalogLabel(hit.title || input.label, input.label);
+  const french = input.languageCode !== "en";
+  const other = casualCatalogLabel(hit.title || input.label, input.label, { french });
   const nick = casualProductNickname(input.currentListingTitle);
   const ship = shippingBit(input.shippingParts);
 
@@ -81,7 +72,9 @@ function formatForeignMulti(input: {
   const nick = casualProductNickname(input.currentListingTitle);
   const ship = shippingBit(input.shippingParts);
   const first = input.hits[0]!;
-  const other = casualCatalogLabel(first.title || input.label, input.label);
+  const other = casualCatalogLabel(first.title || input.label, input.label, {
+    french: input.languageCode !== "en",
+  });
 
   if (input.languageCode === "en") {
     const here =
@@ -259,7 +252,9 @@ export function buildCatalogAvailabilityReply(input: {
     const variant =
       hit.matchedVariationLabel != null
         ? `${hit.matchedVariationLabel}`
-        : casualCatalogLabel(hit.title || label, label);
+        : casualCatalogLabel(hit.title || label, label, {
+            french: input.languageCode !== "en",
+          });
     const qty = hit.matchedVariationQty ?? hit.quantityAvailable;
     signals.push(`catalog_item=${hit.itemId}`, `catalog_qty=${qty}`);
     return {

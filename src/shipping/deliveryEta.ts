@@ -52,7 +52,7 @@ const DESTINATIONS: Array<{
     labelFr: "la Belgique",
     daysMin: 2,
     daysMax: 4,
-    patterns: [/\bbelgique\b/i, /\bbelgium\b/i, /\bbelgi[eë]\b/i],
+    patterns: [/\bbelgique\b/i, /\bbelgium\b/i, /\bbelgi[eë](?![\\w\\u00c0-\\u024f])/i],
   },
   {
     key: "pt",

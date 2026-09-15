@@ -16,7 +16,7 @@ const TRACKING_PATTERNS: RegExp[] = [
   /\b(n['’]ai|nai|n['’]a)\s+pas\s+(re[cç]u|eu)\b/i,
   /\b(not|never|still\s+not)\s+(received|arrived|got)\b/i,
   /\b(haven['’]?t|have\s+not)\s+(received|got|gotten)\b/i,
-  /\b(toujours|pas)\s+arriv[eé]\b/i,
+  /\b(toujours|pas)\s+arriv[eé]e?s?(?![\\w\\u00c0-\\u024f])/i,
   /\bobjet\s+non\s+re[cç]u\b/i,
   /\bitem\s+not\s+received\b/i,
 ];
