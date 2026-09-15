@@ -8,6 +8,11 @@ export {
   mentionsReturnPolicyAsk,
 } from "./factualShortcut.js";
 export {
+  hasUnknownInclusionAsk,
+  isInclusionAsk,
+  resolveInclusionAsk,
+} from "./inclusionAsk.js";
+export {
   detectClosedQuestionTopic,
   enrichResponsePlanWithListing,
 } from "./listingEvidence.js";
@@ -30,15 +35,18 @@ export {
   formatPickupRefuse,
   formatColorPreferenceRefuse,
   formatReturnAddressReply,
+  formatWarrantyReply,
   isInvoiceAsk,
   isLocalPickupAsk,
   isColorPreferenceReturn,
   isRepairListing,
   isReturnAddressAsk,
+  isWarrantyAsk,
   repairListingFactLine,
   workingPartFactLine,
   isOemGenericAsk,
   SELLER_RETURN_ADDRESS,
+  SELLER_WARRANTY_MONTHS,
   replyHasPlaceholder,
   replyLeaksReturnAddress,
 } from "./sellerOps.js";

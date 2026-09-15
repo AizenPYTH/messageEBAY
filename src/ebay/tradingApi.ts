@@ -45,6 +45,11 @@ export type ListingDetails = {
   returnsWithin?: string;
   shippingCostPaidBy?: string;
   dispatchTimeMax?: string;
+  /** eBay ListingType: Chinese = auction, FixedPriceItem = Buy It Now. */
+  listingType?: string;
+  buyItNowPrice?: string;
+  startPrice?: string;
+  bidCount?: string;
   rawAvailable: true;
 };
 
@@ -122,13 +127,13 @@ export function parseGetItemListing(xml: string, itemId: string): ListingDetails
     ? stripHtml(descriptionXml)
     : undefined;
 
+  const quantity = firstTag(itemXml, "Quantity");
+  const sellingStatus = firstTag(itemXml, "SellingStatus");
   const price =
+    firstTag(sellingStatus ?? "", "CurrentPrice") ||
     firstTag(itemXml, "CurrentPrice") ||
     firstTag(itemXml, "StartPrice") ||
     firstTag(itemXml, "BuyItNowPrice");
-
-  const quantity = firstTag(itemXml, "Quantity");
-  const sellingStatus = firstTag(itemXml, "SellingStatus");
   const quantitySold =
     firstTag(sellingStatus ?? "", "QuantitySold") ||
     firstTag(itemXml, "QuantitySold");
@@ -172,6 +177,10 @@ export function parseGetItemListing(xml: string, itemId: string): ListingDetails
     returnsWithin: firstTag(itemXml, "ReturnsWithinOption"),
     shippingCostPaidBy: firstTag(itemXml, "ShippingCostPaidByOption"),
     dispatchTimeMax: firstTag(itemXml, "DispatchTimeMax"),
+    listingType: firstTag(itemXml, "ListingType"),
+    buyItNowPrice: firstTag(itemXml, "BuyItNowPrice"),
+    startPrice: firstTag(itemXml, "StartPrice"),
+    bidCount: firstTag(sellingStatus ?? "", "BidCount"),
     rawAvailable: true,
   };
 }

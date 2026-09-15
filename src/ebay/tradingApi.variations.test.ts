@@ -86,4 +86,29 @@ describe("parseGetItemListing", () => {
     assert.equal(listing.shippingOptions[1]?.international, true);
     assert.equal(listing.shippingOptions[1]?.cost, "8.50");
   });
+
+  it("parses an auction (Chinese) without Buy It Now", () => {
+    const xml = `<?xml version="1.0"?>
+<GetItemResponse>
+  <Ack>Success</Ack>
+  <Item>
+    <ItemID>99</ItemID>
+    <Title>iPhone SE</Title>
+    <ListingType>Chinese</ListingType>
+    <ListingStatus>Active</ListingStatus>
+    <StartPrice>35.0</StartPrice>
+    <Currency>EUR</Currency>
+    <SellingStatus>
+      <CurrentPrice>35.0</CurrentPrice>
+      <BidCount>2</BidCount>
+      <QuantitySold>0</QuantitySold>
+    </SellingStatus>
+  </Item>
+</GetItemResponse>`;
+    const listing = parseGetItemListing(xml, "99");
+    assert.equal(listing.listingType, "Chinese");
+    assert.equal(listing.price, "35.0");
+    assert.equal(listing.bidCount, "2");
+    assert.equal(listing.buyItNowPrice, undefined);
+  });
 });

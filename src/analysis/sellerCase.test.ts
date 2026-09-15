@@ -103,6 +103,15 @@ describe("classifySellerCase", () => {
     assert.equal(c.autoReplyKind, undefined);
   });
 
+  it("warranty ask: auto reply 3 months", () => {
+    const c = classifySellerCase({
+      latestText: "Bonjour, quelle est la garantie ?",
+    });
+    assert.equal(c.kind, "warranty_ask");
+    assert.equal(c.needsSellerIntervention, false);
+    assert.equal(c.autoReplyKind, "warranty");
+  });
+
   it("local pickup: refuse auto, shipping only", () => {
     const c = classifySellerCase({
       latestText: "Bonjour, c'est possible de le recuperer demain dans la matinée.",

@@ -81,4 +81,18 @@ describe("selectListingFacts", () => {
     assert.doesNotMatch(facts, /DispatchTimeMax/);
     assert.doesNotMatch(facts, /Livraison/);
   });
+
+  it("for an auction flags no Buy It Now", () => {
+    const facts = selectListingFacts(
+      {
+        ...listing,
+        listingType: "Chinese",
+        price: "35.0",
+        buyItNowPrice: undefined,
+      },
+      "Achat immédiat possible ?",
+    ).join("\n");
+    assert.match(facts, /ENCHÈRE/i);
+    assert.match(facts, /PAS d'achat immédiat/i);
+  });
 });

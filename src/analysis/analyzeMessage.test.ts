@@ -84,4 +84,25 @@ describe("analyzeMessage", () => {
     const plan = analyzeMessage("Bonjour, je n'ai pas reçu mon colis");
     assert.equal(plan.intent, "shipping_tracking");
   });
+
+  it("treats order news / ship-my-order as tracking not stock", () => {
+    assert.equal(
+      analyzeMessage(
+        "Bonjour avez vous des retours par rapport à ma commande ? Merci",
+      ).intent,
+      "shipping_tracking",
+    );
+    assert.equal(
+      analyzeMessage(
+        "Bonjour pouvez vous expédier ce que je vous ai commandé ? Merci",
+      ).intent,
+      "shipping_tracking",
+    );
+    assert.equal(
+      analyzeMessage(
+        "Bonjour avez vous des informations de suivi sur la commande svp ? Merci",
+      ).intent,
+      "shipping_tracking",
+    );
+  });
 });

@@ -113,6 +113,8 @@ const OFF_PLATFORM_PAYMENT_ASK: RegExp[] = [
   /\bwestern\s+union\b/i,
   /\bamis\s+et\s+famille\b/i,
   /\bfriends\s+and\s+family\b/i,
+  /\b(donner|donne[rz]|votre)\s+(paypal|pay\s*pal)\b/i,
+  /\b(paypal|pay\s*pal)\s*(s['’]il\s+vous|svp)\b/i,
   /\bcartes?\s+bancaires?\b/i,
   /\bcoordonn[eé]es\s+bancaires\b/i,
   /\brib\b/i,

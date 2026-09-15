@@ -137,14 +137,14 @@ function pickIntent(input: {
     return { intent: "negotiation", reasons };
   }
 
-  if (matchesAny(text, RETURN_PATTERNS)) {
-    reasons.push("indices retour/remboursement");
-    return { intent: "return_request", reasons };
-  }
-
   if (isTrackingRequest(text)) {
     reasons.push("demande de suivi / localisation colis");
     return { intent: "shipping_tracking", reasons };
+  }
+
+  if (matchesAny(text, RETURN_PATTERNS)) {
+    reasons.push("indices retour/remboursement");
+    return { intent: "return_request", reasons };
   }
 
   if (matchesAny(text, AFTER_SALES_PATTERNS)) {

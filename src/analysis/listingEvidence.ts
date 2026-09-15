@@ -4,6 +4,15 @@ import {
   shippingPhraseFromDispatch,
 } from "../seller/casualPhrases.js";
 import { formatShippingDelayReply } from "../shipping/deliveryEta.js";
+import { isTrackingRequest } from "../shipping/detectTracking.js";
+import {
+  parseIphoneModel,
+  variationIsAskedIphone,
+  extractSamsungModelLabel,
+  extractSamsungBoardCode,
+  askedSamsungSkuDiffersFromListing,
+} from "./phoneModel.js";
+import { isInclusionAsk } from "./inclusionAsk.js";
 import {
   listingIsAftermarketPart,
   listingIsGradeA,
@@ -61,6 +70,8 @@ const TOPIC_PATTERNS: Array<{
       /\bstock\b/i,
       /\bavez[- ]vous\b/i,
       /\bauriez[- ]vous\b/i,
+      /\baurez[- ]vous\b/i,
+      /\b(très\s+)?prochainement\b/i,
       /\bun autre\b/i,
       /\bvous\s+avez\b/i,
       /\by\s+a[- ]t[- ]il\b/i,
@@ -161,7 +172,14 @@ export function detectClosedQuestionTopic(
 ): TopicDetection | null {
   const text = message?.trim() ?? "";
   if (!text) return null;
+  const explicitStock =
+    /\b(dispo|disponible|en stock|plus en stock|toujours en vente|still available)\b/i.test(
+      text,
+    );
   for (const item of TOPIC_PATTERNS) {
+    if (item.topic === "available" && isTrackingRequest(text) && !explicitStock) {
+      continue;
+    }
     if (item.patterns.some((re) => re.test(text))) {
       return { topic: item.topic, label: item.label };
     }
@@ -188,6 +206,18 @@ export function detectAllListingTopics(
   ) {
     found.unshift("available");
   }
+  // "avez-vous des infos de suivi / des retours sur ma commande" is not stock.
+  const explicitStock =
+    /\b(dispo|disponible|en stock|plus en stock|toujours en vente|still available)\b/i.test(
+      text,
+    );
+  if (isTrackingRequest(text) && !explicitStock) {
+    return found.filter((t) => t !== "available");
+  }
+  // "avez-vous un qui comprend la Touch Bar" = contenu de CETTE pièce, pas un autre produit.
+  if (isInclusionAsk(text) && !explicitStock) {
+    return found.filter((t) => t !== "available");
+  }
   return found;
 }
 
@@ -213,17 +243,19 @@ function formatVariationLabel(v: ListingVariation): string {
   return specs || v.sku || "variante";
 }
 
-/** "Surface Pro 8", "Pro 8", "iPhone 12", … */
+/** "Surface Pro 8", "Pro 8", "iPhone 11 Pro Max", … */
 export function extractAskedModelLabel(message: string): string | null {
   const raw = message.trim();
+  const samsung = extractSamsungModelLabel(raw);
+  if (samsung) return samsung;
+  const iphone = parseIphoneModel(raw);
+  if (iphone) return iphone.label;
   const surface = raw.match(/\bsurface\s*pro\s*(\d+)\b/i);
   if (surface) return `Surface Pro ${surface[1]}`;
   const pro = raw.match(/\bpro\s*(\d+)\b/i);
-  if (pro && /\b(écran|ecran|surface|microsoft)\b/i.test(raw)) {
+  if (pro && /\b(écran|ecran|surface|microsoft)\b/i.test(raw) && !/\biphone\b/i.test(raw)) {
     return `Surface Pro ${pro[1]}`;
   }
-  const iphone = raw.match(/\biphone\s*(\d{1,2}(?:\s*(?:pro|max|plus|mini))?)\b/i);
-  if (iphone) return `iPhone ${iphone[1]}`.replace(/\s+/g, " ");
   const ipad = raw.match(/\bipad\s*(\d+|air|pro|mini)(?:\s*(\d+))?/i);
   if (ipad) return ipad[0].replace(/\s+/g, " ");
   const macbook = raw.match(/\bmacbook\s*(air|pro)?\s*(\d{1,2})?\b/i);
@@ -241,6 +273,20 @@ export function matchListingVariation(
   const text = normalizeToken(message ?? "");
   if (!text || !listing?.variations?.length) return null;
 
+  const askedIphone = parseIphoneModel(message ?? "");
+  if (askedIphone) {
+    let best: { variation: ListingVariation; score: number } | null = null;
+    for (const variation of listing.variations) {
+      const blob = variation.specifics.map((s) => s.value).join(" ");
+      if (!variationIsAskedIphone(askedIphone, blob) && !variationIsAskedIphone(askedIphone, variation.sku ?? "")) {
+        continue;
+      }
+      const score = 80 + (askedIphone.pro ? 5 : 0) + (askedIphone.max ? 5 : 0);
+      if (!best || score > best.score) best = { variation, score };
+    }
+    return best?.variation ?? null;
+  }
+
   let best: { variation: ListingVariation; score: number } | null = null;
   const askedModel = extractAskedModelLabel(message ?? "");
   const askedNorm = askedModel ? normalizeToken(askedModel) : "";
@@ -251,10 +297,11 @@ export function matchListingVariation(
       if (value.length < 1) continue;
       let score = 0;
       if (text.includes(value)) score = value.length;
-      if (askedNorm && (value.includes(askedNorm) || askedNorm.includes(value))) {
-        score = Math.max(score, askedNorm.length + 5);
+      if (askedNorm && (value === askedNorm || value.includes(askedNorm) || askedNorm.includes(value))) {
+        // Prefer exact / longer overlap; do not let a short "11" beat "11 pro max".
+        const overlap = Math.min(value.length, askedNorm.length);
+        score = Math.max(score, overlap + (value === askedNorm ? 20 : 5));
       }
-      // "8" vs "Surface Pro 8"
       const num = askedModel?.match(/(\d+)/)?.[1];
       if (num && (value === num || value.endsWith(` ${num}`) || value.endsWith(num))) {
         score = Math.max(score, 8);
@@ -343,6 +390,17 @@ function availabilityReply(
   const signals: string[] = [];
   const matched = matchListingVariation(message, listing);
   const askedModel = extractAskedModelLabel(message ?? "");
+
+  if (askedSamsungSkuDiffersFromListing(message, listing?.title)) {
+    return {
+      answerability: "unknown",
+      signals: [
+        ...signals,
+        `sku_samsung_absent=${extractSamsungBoardCode(message) ?? askedModel ?? "?"}`,
+      ],
+      text: "",
+    };
+  }
 
   if (matched) {
     const label = formatVariationLabel(matched);

@@ -33,6 +33,21 @@ export function looksLikeOurSellerReply(text: string | undefined): boolean {
   return false;
 }
 
+const CONFIRMED_CANCEL =
+  /commande sera annul|[ée]t[ée] annul|commande est annul|j['’]annule (votre |la )?commande|order will be cancel|(order|purchase) (has been|is being|was) cancel|i('ll| will) cancel (the |your )?order/i;
+
+/** We already told the buyer the order is / will be cancelled — don't ask again. */
+export function sellerAlreadyConfirmedCancel(input: {
+  messages: EbayMessage[];
+  selfUsernames: Array<string | undefined>;
+}): boolean {
+  return sortChronological(input.messages).some(
+    (m) =>
+      isOurMessage(m, input.selfUsernames) &&
+      CONFIRMED_CANCEL.test(m.messageBody ?? ""),
+  );
+}
+
 export function isNearDuplicateReply(
   a: string | undefined,
   b: string | undefined,

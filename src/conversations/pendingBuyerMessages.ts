@@ -1,4 +1,5 @@
 import type { EbayMessage } from "../ebay/messageApi.js";
+import { isNoReplyNeeded } from "../analysis/needsReply.js";
 import { isFromSelf } from "./messageSides.js";
 
 /**
@@ -40,20 +41,7 @@ export function collectPendingBuyerMessages(input: {
 
 /** Pure ack / thanks / greeting — not a question to answer. */
 export function isTrivialBuyerAck(text: string | undefined): boolean {
-  const raw = (text ?? "").trim();
-  if (!raw) return true;
-  if (raw.length > 100) return false;
-  if (/\?/.test(raw)) return false;
-  const normalized = raw
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/['’]/g, "'")
-    .toLowerCase()
-    .replace(/[!.,…]+$/g, "")
-    .trim();
-  return /^(bonjour|bonsoir|salut|hello|hi|hey|d'accord(\s+merci)?|ok(ay)?|merci(\s+beaucoup)?|thanks|thank you|parfait|super|top|nickel|recu|noted|note|bien recu|ca marche|bonne (journee|soiree|nuit)|au revoir|a bientot|bye)(\s+(merci|beaucoup|ok|okay|parfait))?$/i.test(
-    normalized,
-  );
+  return isNoReplyNeeded(text);
 }
 
 /** Pending messages that still need an answer (empty if only "ok merci"). */

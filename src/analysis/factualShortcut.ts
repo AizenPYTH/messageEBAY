@@ -1,3 +1,5 @@
+import { isTrackingRequest } from "../shipping/detectTracking.js";
+import { isInclusionAsk } from "./inclusionAsk.js";
 import { detectAllListingTopics } from "./listingEvidence.js";
 import { isBuyerReturnShipped } from "./sellerCase.js";
 import { isInboundSellOffer } from "./sellerCase.js";
@@ -68,6 +70,10 @@ export function blocksFactualShortcut(text: string | undefined): boolean {
   if (isInboundSellOffer(raw)) return true;
   if (isBuyerOwnDeviceContext(raw)) return true;
   if (isDiagnosticAsk(raw)) return true;
+  // Existing order (suivi / expédier ce que j'ai commandé) → never a stock template.
+  if (isTrackingRequest(raw)) return true;
+  // Touch Bar / trackpad inclus ? — jamais un lien catalogue ni un « non » inventé.
+  if (isInclusionAsk(raw)) return true;
   const words = raw.split(/\s+/).filter(Boolean).length;
   if (words > 32) return true;
   if ((raw.match(/\?/g) ?? []).length >= 2) return true;

@@ -341,7 +341,9 @@ export function formatInstructionsSection(
   }
 
   if (profile?.negotiationAllowed === false) {
-    rules.push("- La négociation de prix n'est pas autorisée.");
+    rules.push(
+      "- Prix ferme : dire le tarif, poli (« désolé on peut pas vraiment descendre »). INTERDIT « n'est pas autorisée ». INTERDIT d'inviter une offre.",
+    );
   }
 
   if (profile?.customRules?.length) {

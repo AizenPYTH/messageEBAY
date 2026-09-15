@@ -3,7 +3,11 @@ import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { parseEbayActiveListingsCsv } from "./parseEbayCsv.js";
 import { buildCatalogAvailabilityReply } from "./catalogReply.js";
-import { extractCatalogSearchTokens } from "./searchCatalog.js";
+import {
+  extractAskedProductPhrase,
+  extractCatalogSearchTokens,
+  catalogTitleMatchesAsk,
+} from "./searchCatalog.js";
 
 describe("parseEbayActiveListingsCsv", () => {
   it("parses surface multi-variation listing with Pro 8 OOS", () => {
@@ -36,6 +40,15 @@ describe("parseEbayActiveListingsCsv", () => {
 });
 
 describe("extractCatalogSearchTokens", () => {
+  it("keeps iPhone Pro Max tokens distinct from 11", () => {
+    const tokens = extractCatalogSearchTokens(
+      "Vous avez un écran iPhone 11 pro Max ?",
+    );
+    assert.ok(tokens.includes("11"));
+    assert.ok(tokens.includes("max"));
+    assert.ok(tokens.includes("pro"));
+  });
+
   it("keeps surface pro model tokens", () => {
     const tokens = extractCatalogSearchTokens(
       "bonjour écran surface pro 8 est dispo ?",
@@ -52,6 +65,47 @@ describe("extractCatalogSearchTokens", () => {
     assert.ok(!tokens.includes("delai"));
     assert.ok(!tokens.includes("livraison"));
     assert.equal(tokens[0] === "puces" || tokens[0] === "lyca", true);
+  });
+
+  it("searches A137F for a Samsung A13 ask, not iPhone 13", () => {
+    const ask = "Vous avez un écran Samsung a 13 4g modèle a137F?";
+    const tokens = extractCatalogSearchTokens(ask);
+    assert.ok(tokens.includes("a137f"));
+    assert.ok(!tokens.includes("iphone"));
+    assert.equal(
+      catalogTitleMatchesAsk("Ecran Complet iPhone 13", ask),
+      false,
+    );
+    assert.equal(
+      catalogTitleMatchesAsk(
+        "Ecran Complet Galaxy A13 4G (A135F) (Avec châssis)",
+        ask,
+      ),
+      false,
+    );
+    assert.equal(
+      catalogTitleMatchesAsk("Ecran Complet Galaxy A13 4G (A137F)", ask),
+      true,
+    );
+  });
+
+  it("does not treat order-status avez-vous as a product ask", () => {
+    assert.equal(
+      extractAskedProductPhrase(
+        "Bonjour avez vous des informations de suivi sur la commande svp ? Merci",
+      ),
+      null,
+    );
+    assert.equal(
+      extractAskedProductPhrase(
+        "Bonjour avez vous des retours par rapport à ma commande ? Merci",
+      ),
+      null,
+    );
+    assert.equal(
+      extractAskedProductPhrase("avez vous des puces lyca ?"),
+      "puces lyca",
+    );
   });
 });
 
@@ -115,6 +169,21 @@ describe("buildCatalogAvailabilityReply", () => {
     assert.match(result.reply ?? "", /voici le lien/i);
     assert.match(result.reply ?? "", /318126245638/);
     assert.doesNotMatch(result.reply ?? "", /Pour le délai/i);
+  });
+
+  it("does not claim the current A135F screen when the buyer asked A137F", () => {
+    const result = buildCatalogAvailabilityReply({
+      message: "Vous avez un écran Samsung a 13 4g modèle a137F?",
+      askedLabel: "A137F",
+      hits: [],
+      foreignProductAsk: true,
+      currentListingTitle: "Ecran Complet Galaxy A13 4G (A135F) (Avec châssis)",
+      currentListingInStock: false,
+      extraParts: ["envoi le jour même avant 15h (sauf samedi et dimanche)"],
+    });
+    assert.equal(result.answerability, "direct_no");
+    assert.doesNotMatch(result.reply ?? "", /tjr dispo/i);
+    assert.match(result.reply ?? "", /A137F/i);
   });
 });
 

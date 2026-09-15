@@ -10,10 +10,13 @@ import {
   isRepairListing,
   isOemGenericAsk,
   isReturnAddressAsk,
+  isWarrantyAsk,
   listingIsAftermarketPart,
   replyHasPlaceholder,
   workingPartFactLine,
+  formatWarrantyReply,
   SELLER_RETURN_ADDRESS,
+  SELLER_WARRANTY_MONTHS,
 } from "./sellerOps.js";
 
 describe("isLocalPickupAsk", () => {
@@ -44,6 +47,17 @@ describe("isInvoiceAsk", () => {
       true,
     );
     assert.equal(isInvoiceAsk("C'est compatible A1466 ?"), false);
+  });
+});
+
+describe("warranty", () => {
+  it("detects garantie asks and answers 3 months", () => {
+    assert.equal(isWarrantyAsk("Quelle est la garantie ?"), true);
+    assert.equal(isWarrantyAsk("C'est compatible ?"), false);
+    const reply = formatWarrantyReply({});
+    assert.match(reply, new RegExp(String(SELLER_WARRANTY_MONTHS)));
+    assert.match(reply, /mois/i);
+    assert.doesNotMatch(reply, /information|je n['’]ai pas/i);
   });
 });
 

@@ -20,6 +20,33 @@ describe("isTrackingRequest", () => {
     assert.equal(isTrackingRequest("I never received the package"), true);
   });
 
+  it("treats existing-order follow-ups as tracking, not stock", () => {
+    assert.equal(
+      isTrackingRequest(
+        "Bonjour avez vous des informations de suivi sur la commande svp ? Merci",
+      ),
+      true,
+    );
+    assert.equal(
+      isTrackingRequest(
+        "Le lien correspond pas à mon annonce et le suivi sur ma commande n'est pas à jour",
+      ),
+      true,
+    );
+    assert.equal(
+      isTrackingRequest(
+        "Bonjour avez vous des retours par rapport à ma commande ? Merci",
+      ),
+      true,
+    );
+    assert.equal(
+      isTrackingRequest(
+        "Bonjour pouvez vous expédier ce que je vous ai commandé ? Merci",
+      ),
+      true,
+    );
+  });
+
   it("ignores unrelated questions", () => {
     assert.equal(isTrackingRequest("Fonctionnel ?"), false);
     assert.equal(isTrackingRequest("Merci"), false);

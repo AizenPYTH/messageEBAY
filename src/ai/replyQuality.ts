@@ -1,4 +1,6 @@
-import { isInvoiceAsk, isLocalPickupAsk, isRepairListing, isReturnAddressAsk, replyHasPlaceholder, replyLeaksReturnAddress } from "../analysis/sellerOps.js";
+import { isAuctionListing, listingHasBuyItNow, isBuyItNowAsk, isItemPriceAsk } from "../analysis/listingFormat.js";
+import { isInvoiceAsk, isRepairListing, isReturnAddressAsk, replyHasPlaceholder, replyLeaksReturnAddress } from "../analysis/sellerOps.js";
+import { replyInventedInclusion } from "../analysis/inclusionAsk.js";
 import { detectAllListingTopics } from "../analysis/listingEvidence.js";
 import type { ClosedQuestionTopic } from "../analysis/types.js";
 import type { ListingDetails } from "../ebay/tradingApi.js";
@@ -7,7 +9,7 @@ import { isShippingCostAsk } from "../shipping/shippingCost.js";
 import { isTrackingRequest } from "../shipping/detectTracking.js";
 import { isDeliveryEtaAsk, detectDestination } from "../shipping/deliveryEta.js";
 import { SAME_DAY_BEFORE_15 } from "../seller/casualPhrases.js";
-import { isNearDuplicateReply } from "../autopilot/alreadyReplied.js";
+import { isNearDuplicateReply, sellerAlreadyConfirmedCancel } from "../autopilot/alreadyReplied.js";
 import { isAbstainReply } from "./abstain.js";
 
 export type ReplyQualityIssue =
@@ -36,7 +38,9 @@ const STOCK_REPLY =
   /\b(dispo|disponible|en stock|plus en stock|rupture|oui|non|encore)\b/i;
 const PART_CODE = /\b(A\d{4}|820-\d{4,}-[A-Z0-9]+)\b/gi;
 const ROBOT_NO_INFO =
-  /je ne peux pas (fournir|confirmer)|je vous encourage|source fiable|d[ée]tails ne sont pas disponibles|n['’]h[ée]sitez pas|v[ée]rifiez les sp[ée]cifications|satisfaction est notre priorit|point d['’]honneur|nous mettons tout en [œoe]uvre|consulter un professionnel|expertise technique|nous pourrions envisager|tenir inform[ée] de l['’][ée]volution|je vous informe que nous proposons|merci pour votre compr[ée]hension/i;
+  /je ne peux pas (fournir|confirmer)|je n['’]ai pas (d['’]?informations?|l['’]?info|cette information)|je n['’]ai pas (assez )?d['’]?info|informations?\s+(ne sont )?pas disponibles|je vous encourage|source fiable|d[ée]tails ne sont pas disponibles|n['’]h[ée]sitez pas|v[ée]rifiez les sp[ée]cifications|satisfaction est notre priorit|point d['’]honneur|nous mettons tout en [œoe]uvre|consulter un professionnel|expertise technique|nous pourrions envisager|tenir inform[ée] de l['’][ée]volution|je vous informe que nous proposons|merci pour votre compr[ée]hension|i (don['’]?t|do not) have (the )?information|i cannot (provide|confirm)/i;
+const INVOICE_CLAIM_SENT =
+  /\b(facture|invoice|fattura).{0,40}\b(envoy[ée]e?|transmis[et]|sent|inviata)\b|\b(envoy[ée]e?|transmis[et]|sent).{0,40}\b(facture|invoice|fattura)\b|\bje (vous )?(l['’]ai|ai) (d[ée]j[àa] )?(envoy|transmis)/i;
 const UNTESTED_HEDGE =
   /ne test(e|ons) pas (toutes )?les fonctions|je ne peux pas garantir|on ne (peut|peut\s+pas) garant|n['’]est pas n[ée]cessairement .{0,60}apple|signes d['’]usure minimes/i;
 const PICKUP_CONFIRM =
@@ -62,6 +66,7 @@ function askedShipping(ask: string, topics: ClosedQuestionTopic[]): boolean {
 }
 
 function askedReturns(ask: string): boolean {
+  if (isTrackingRequest(ask)) return false;
   return /\b(retour|rembours|return|refund)\b/i.test(ask);
 }
 
@@ -70,11 +75,16 @@ function askedPrice(ask: string): boolean {
 }
 
 function askedStock(ask: string, topics: ClosedQuestionTopic[]): boolean {
+  if (isTrackingRequest(ask)) return false;
   return (
     topics.includes("available") ||
     /\b(dispo|disponible|stock|avez[- ]vous|encore)\b/i.test(ask)
   );
 }
+
+const CATALOG_STOCK_LINK =
+  /oui on a .{0,100} en stock,\s*voici le lien/i;
+const EBAY_ITEM_LINK = /ebay\.[a-z.]+\/itm\//i;
 
 function lastSellerBody(
   messages: EbayMessage[],
@@ -136,17 +146,48 @@ export function assessReplyQuality(input: {
   }
 
   if (
-    askedStock(ask, topics) &&
-    /\bannul/i.test(body) &&
-    !/\bannul/i.test(ask)
+    /\b(annul|cancel)\b/i.test(body) &&
+    !/\b(annul|cancel)\b/i.test(ask)
   ) {
     issues.push("off_topic");
     reasons.push("la réponse parle d'annulation alors que la question est autre");
   }
 
+  if (
+    sellerAlreadyConfirmedCancel({
+      messages: input.messages ?? [],
+      selfUsernames: input.selfUsernames ?? [],
+    }) &&
+    /confirmez l['’]?annulation|confirm the cancellation/i.test(body)
+  ) {
+    issues.push("duplicate");
+    reasons.push("annulation déjà confirmée — ne pas redemander");
+  }
+
   if (askedStock(ask, topics) && !STOCK_REPLY.test(body) && body.length > 20) {
     issues.push("misses_question");
     reasons.push("la question porte sur la dispo mais la réponse n'y répond pas");
+  }
+
+  if (
+    /\b(samsung|galaxy)\b/i.test(ask) &&
+    /\biphone\b/i.test(body) &&
+    !/\biphone\b/i.test(ask)
+  ) {
+    issues.push("off_topic");
+    reasons.push(
+      "le client demande un Samsung / Galaxy, pas un iPhone — ne pas envoyer un lien iPhone",
+    );
+  }
+
+  if (
+    isTrackingRequest(ask) &&
+    (CATALOG_STOCK_LINK.test(body) || EBAY_ITEM_LINK.test(body))
+  ) {
+    issues.push("off_topic");
+    reasons.push(
+      "commande déjà passée (suivi / expédition) : interdiction d'envoyer un lien catalogue ou une autre annonce",
+    );
   }
 
   const prev = lastSellerBody(input.messages ?? [], input.selfUsernames ?? []);
@@ -168,8 +209,18 @@ export function assessReplyQuality(input: {
   if (ROBOT_NO_INFO.test(body)) {
     issues.push("robotic");
     reasons.push(
-      "ton robot (je ne peux pas fournir / source fiable / n'hésitez pas) — répondre en vendeur avec le titre, ou dire simplement qu'on n'a pas testé",
+      "ton robot / « je n'ai pas d'informations » — si tu ne sais pas : NO_REPLY (ne rien envoyer)",
     );
+  }
+
+  if (isInvoiceAsk(ask)) {
+    issues.push("invented");
+    reasons.push(
+      "demande de facture : NE RIEN RÉPONDRE (le vendeur l'envoie à la main) — interdit de dire que tu l'as envoyée",
+    );
+  } else if (INVOICE_CLAIM_SENT.test(body)) {
+    issues.push("invented");
+    reasons.push("ne pas prétendre avoir envoyé une facture");
   }
 
   if (replyHasPlaceholder(input.reply)) {
@@ -223,14 +274,52 @@ export function assessReplyQuality(input: {
     }
   }
 
-  if (isInvoiceAsk(ask) && /\b(facture|invoice|transmettr|tva)\b/i.test(body)) {
+  if (replyInventedInclusion({ reply: body, ask, listing: input.listing })) {
     issues.push("invented");
-    reasons.push("ne pas répondre ni promettre une facture");
+    reasons.push(
+      "Touch Bar / trackpad (ou autre inclus) : l'annonce ne le dit pas — NO_REPLY. INTERDIT d'inventer « sans trackpad / just the top case » (ça fait perdre la vente)",
+    );
   }
 
-  if (isLocalPickupAsk(ask) && PICKUP_CONFIRM.test(body) && !/pas de retrait|shipping only|uniquement envoi/i.test(body)) {
+  if (
+    isAuctionListing(input.listing) &&
+    !listingHasBuyItNow(input.listing) &&
+    /achat.{0,40}imm[ée]diatement|buy\s+it\s+now\s+(is\s+)?available|oui.{0,80}achat\s+imm[ée]diat/i.test(
+      body,
+    )
+  ) {
     issues.push("invented");
-    reasons.push("ne pas confirmer un retrait / main propre");
+    reasons.push(
+      "annonce en enchère sans achat immédiat : INTERDIT de dire que l'achat immédiat est possible",
+    );
+  }
+
+  if (
+    isItemPriceAsk(ask) &&
+    !isBuyItNowAsk(ask) &&
+    /frais d['’]?envoi sont ceux de l['’]annonce|shipping is as listed/i.test(body) &&
+    !/\b(ench[eè]re|prix actuel|achat imm[ée]diat)\b/i.test(body)
+  ) {
+    issues.push("off_topic");
+    reasons.push("question sur le prix de l'article, pas les frais de port");
+  }
+
+  if (
+    /n[ée]gociation.{0,30}(n['’]est pas autoris[ée]e?|interdit)/i.test(body) ||
+    /discuter du prix|faire part de votre proposition|votre proposition/i.test(body)
+  ) {
+    issues.push("robotic");
+    reasons.push(
+      "prix ferme : dire le tarif comme un vendeur (« on peut pas vraiment descendre »), pas « n'est pas autorisée » ni inviter une offre",
+    );
+  }
+
+  const listingGrade = input.listing?.title?.match(/\bgrade\s*([ab])\b/i)?.[1]?.toUpperCase();
+  const replyGradeA = /\bgrade\s*a\b/i.test(body);
+  const replyGradeB = /\bgrade\s*b\b/i.test(body);
+  if (listingGrade === "B" && replyGradeA && !replyGradeB) {
+    issues.push("invented");
+    reasons.push("l'annonce est Grade B — ne pas parler de Grade A");
   }
 
   const max = input.maxWords ?? 80;
@@ -262,5 +351,7 @@ export function formatRepairNotes(qa: ReplyQualityResult): string {
     "Si l'annonce est pour réparation / pièces / HS : dis ce qu'il y a dans le titre et qu'on n'a pas tout testé. Jamais « je ne peux pas fournir » ni « source fiable ».",
     "Si c'est Grade A / générique / compatible / vendu fonctionnel : ça MARCHE. Générique = pas original Apple, très bonne qualité. INTERDIT « on ne teste pas » / « je ne peux pas garantir ».",
     "Adresse de retour : seulement si demandée explicitement → 7 square Stalingrad 13001 Marseille. INTERDIT tout placeholder.",
+    "Si tu ne sais pas : NO_REPLY. INTERDIT « je n'ai pas d'informations ». Facture : NO_REPLY. Garantie : 3 mois.",
+    "Touch Bar / trackpad / contenu d'un topcase : seulement si c'est ÉCRIT dans l'annonce. Sinon NO_REPLY. INTERDIT d'inventer un non (« just the top case », « does not include »).",
   ].join("\n");
 }

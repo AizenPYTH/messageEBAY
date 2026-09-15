@@ -38,7 +38,7 @@ export function buildSystemPrompt(
     }
   } else if (plan?.listingAnswerability === "unknown") {
     styleRules.push(
-      "Si un détail manque vraiment : dis-le simplement et utilement (ex. « je n'ai pas l'info couverture exacte, c'est du réseau Lyca »), sans phrase administrative.",
+      "Si le fait manque vraiment : NO_REPLY. INTERDIT « je n'ai pas d'informations » / ton administratif.",
     );
   }
 

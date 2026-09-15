@@ -39,6 +39,20 @@ describe("isNoReplyNeeded", () => {
       true,
     );
     assert.equal(isNoReplyNeeded("parfait .merci a vous"), true);
+    assert.equal(isNoReplyNeeded("Ok, merci de votre aide"), true);
+    assert.equal(isNoReplyNeeded("Merci ! No problem."), true);
+    assert.equal(
+      isNoReplyNeeded(
+        "Je m'excuse beaucoup pour la confusion que j'ai créée. Je vous en suis vraiment très reconnaissant. Merci beaucoup de salutations cordiales",
+      ),
+      true,
+    );
+    assert.equal(
+      isNoReplyNeeded(
+        "Je m'excuse, si vous pouvez annuler le paiement, j'ai remarqué après que le disque ne convient pas",
+      ),
+      false,
+    );
   });
 });
 

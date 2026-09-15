@@ -7,18 +7,25 @@ import {
   isBuyerReturnShipped,
   isShipTodayPhrase,
 } from "../analysis/sellerCase.js";
-import { formatPickupRefuse, formatColorPreferenceRefuse, formatReturnAddressReply, listingColorLabel } from "../analysis/sellerOps.js";
+import { formatPickupRefuse, formatColorPreferenceRefuse, formatReturnAddressReply, formatWarrantyReply, listingColorLabel } from "../analysis/sellerOps.js";
 import {
   buildListingFactualReply,
   detectAllListingTopics,
   extractAskedModelLabel,
 } from "../analysis/listingEvidence.js";
+import { askedSamsungSkuDiffersFromListing } from "../analysis/phoneModel.js";
+import {
+  formatKnownInclusionReply,
+  hasUnknownInclusionAsk,
+  resolveInclusionAsk,
+} from "../analysis/inclusionAsk.js";
 import type { ResponsePlan } from "../analysis/types.js";
 import {
   buildCatalogAvailabilityReply,
   buildApplePartsReply,
   extractAskedProductPhrase,
   extractApplePartNumbers,
+  applePartsForStockAsk,
   extractCatalogSearchTokens,
   resolveApplePartsStock,
   askedFinishDiffersFromListing,
@@ -52,6 +59,12 @@ import {
 } from "../shipping/shippingCost.js";
 import { isBuyerUpset } from "../prompt/policyRules.js";
 import { isNoReplyNeeded } from "../analysis/needsReply.js";
+import {
+  formatPurchaseHowReply,
+  wantsPurchaseHowReply,
+} from "../analysis/listingFormat.js";
+import { formatFirmPriceReply, isPriceNegotiationAsk } from "../analysis/firmPrice.js";
+import { sellerAlreadyConfirmedCancel } from "../autopilot/alreadyReplied.js";
 import { allowFactualShortcut, blocksFactualShortcut } from "../analysis/factualShortcut.js";
 import { isAbstainReply } from "./abstain.js";
 import { reasonThenReply } from "./reasonThenReply.js";
@@ -78,6 +91,7 @@ function listingCoversProductAsk(
 ): boolean {
   if (!listing) return false;
   if (askedFinishDiffersFromListing(message, listing.title)) return false;
+  if (askedSamsungSkuDiffersFromListing(message, listing.title)) return false;
   const hay = normalizeHay(
     [
       listing.title ?? "",
@@ -336,6 +350,20 @@ export async function runAiPipeline(
     currentAskText: askNow,
   };
   if (responsePlan.needsSellerIntervention) {
+    const purchase = formatPurchaseHowReply({
+      message: askNow || latestText,
+      listing: context.listing,
+      languageCode: responsePlan.languageCode,
+      signature: sellerProfile?.signature,
+    });
+    if (purchase && responsePlan.escalationReason === "off_platform_payment") {
+      return baseResult(common, {
+        systemPrompt: "",
+        userPrompt: "listing:purchase_format+paypal",
+        reply: purchase,
+        escalated: true,
+      });
+    }
     return baseResult(common, {
       systemPrompt: "",
       userPrompt: "",
@@ -375,6 +403,20 @@ export async function runAiPipeline(
 
   // Wrong address / cancel — seller cancels themselves, never "eBay must cancel".
   if (responsePlan.autoReplyKind === "wrong_address_cancel") {
+    if (
+      isNoReplyNeeded(askNow) ||
+      sellerAlreadyConfirmedCancel({
+        messages: context.messages,
+        selfUsernames: [sellerUsername],
+      })
+    ) {
+      return baseResult(common, {
+        systemPrompt: "",
+        userPrompt: "skip:cancel_already_done",
+        reply: "",
+        escalated: false,
+      });
+    }
     const reply = formatWrongAddressCancel({
       languageCode: responsePlan.languageCode,
       signature: sellerProfile?.signature,
@@ -431,6 +473,20 @@ export async function runAiPipeline(
     });
   }
 
+  // Warranty — always 3 months, no "je n'ai pas d'info".
+  if (responsePlan.autoReplyKind === "warranty") {
+    const reply = formatWarrantyReply({
+      languageCode: responsePlan.languageCode,
+      signature: sellerProfile?.signature,
+    });
+    return baseResult(common, {
+      systemPrompt: "",
+      userPrompt: "case:warranty",
+      reply,
+      escalated: false,
+    });
+  }
+
   // Stock / variante / délai — jamais si le fil parle d'un retour déjà envoyé.
   const recentBuyerText = context.messages
     .filter(
@@ -466,8 +522,45 @@ export async function runAiPipeline(
     );
   }
 
+  // Prix ferme / offre — ton vendeur, pas « négociation non autorisée ».
+  if (isPriceNegotiationAsk(latestText) || isPriceNegotiationAsk(askNow)) {
+    const firm = formatFirmPriceReply({
+      message: askNow || latestText,
+      listing: context.listing,
+      languageCode: responsePlan.languageCode,
+      signature: sellerProfile?.signature,
+    });
+    if (firm) {
+      return baseResult(common, {
+        systemPrompt: "",
+        userPrompt: "listing:firm_price",
+        reply: firm,
+        escalated: false,
+      });
+    }
+  }
+
+  // Enchère / achat immédiat / prix de l'article / PayPal hors eBay.
+  if (wantsPurchaseHowReply(latestText) || wantsPurchaseHowReply(askNow)) {
+    const purchase = formatPurchaseHowReply({
+      message: askNow || latestText,
+      listing: context.listing,
+      languageCode: responsePlan.languageCode,
+      signature: sellerProfile?.signature,
+    });
+    if (purchase) {
+      return baseResult(common, {
+        systemPrompt: "",
+        userPrompt: "listing:purchase_format",
+        reply: purchase,
+        escalated: false,
+      });
+    }
+  }
+
   // Frais de port / 0 € : tarifs annonce, 0 € = France only.
-  if (isShippingCostAsk(latestText)) {
+  // Pas si la question est enchère / achat immédiat / prix de l'article.
+  if (isShippingCostAsk(latestText) && !wantsPurchaseHowReply(latestText)) {
     const abroad =
       buyerLikelyAbroad(latestText) || buyerLikelyAbroad(recentBuyerText);
     const reply = formatShippingCostReply({
@@ -509,9 +602,103 @@ export async function runAiPipeline(
     }
   }
 
+  const trackingAsk =
+    responsePlan.intent === "shipping_tracking" ||
+    isTrackingRequest(latestText) ||
+    isTrackingRequest(askNow) ||
+    pendingBuyerMessages.some((m) => isTrackingRequest(m.messageBody));
+
+  let shipment = undefined as
+    | Awaited<ReturnType<NonNullable<AiEngineDeps["resolveShipment"]>>>
+    | undefined;
+
+  if (deps.resolveShipment && (trackingAsk || responsePlan.intent === "after_sales")) {
+    shipment = await deps.resolveShipment({
+      conversationId: options.conversationId,
+      itemId: context.listingItemId ?? context.listing?.itemId,
+    });
+  }
+
+  // Existing order: tracking / "expédier ce que j'ai commandé" — never a catalog link.
+  if (trackingAsk && shipment) {
+    const delivered =
+      shipment.kind === "shipped" && shipment.trackingStatus === "delivered";
+    const alone =
+      !responsePlan.isMultiQuestion && substantivePending.length <= 1;
+
+    if (alone || delivered) {
+      const followUp = isTrackingFollowUp({
+        messages: context.messages,
+        sellerUsername,
+      });
+      let reply = formatShipmentReply({
+        shipment,
+        languageCode: responsePlan.languageCode,
+        signature: sellerProfile?.signature,
+        followUp,
+      });
+      if (isBuyerUpset(latestText)) {
+        const apology =
+          responsePlan.languageCode === "en"
+            ? "Sorry for the inconvenience. "
+            : "Désolé pour la gêne occasionnée. ";
+        reply = reply.replace(
+          /^(Bonjour|Hi)([,.!]?\s*)/i,
+          `$1$2${apology}`,
+        );
+      }
+      return baseResult(common, {
+        systemPrompt: "",
+        userPrompt: `shipment:${shipment.kind}${followUp ? ":follow_up" : ""}${delivered ? ":delivered" : ""}`,
+        reply,
+        escalated: false,
+        shipment,
+      });
+    }
+  }
+
+  const inclusion = resolveInclusionAsk({
+    message: askNow,
+    listing: context.listing,
+  });
+  if (inclusion.asked.length > 0) {
+    if (
+      hasUnknownInclusionAsk({
+        message: askNow,
+        listing: context.listing,
+      })
+    ) {
+      return baseResult(common, {
+        systemPrompt: "",
+        userPrompt: "skip:inclusion_unknown",
+        reply: "",
+        escalated: false,
+        ...(shipment ? { shipment } : {}),
+      });
+    }
+    const inclusionReply = formatKnownInclusionReply({
+      resolution: inclusion,
+      languageCode: responsePlan.languageCode,
+      signature: sellerProfile?.signature,
+    });
+    if (inclusionReply) {
+      return baseResult(common, {
+        systemPrompt: "",
+        userPrompt: "listing:inclusion",
+        reply: inclusionReply,
+        escalated: false,
+        ...(shipment ? { shipment } : {}),
+      });
+    }
+  }
+
   const coversAsk = listingCoversProductAsk(latestText, context.listing);
   const productPhrase = extractAskedProductPhrase(latestText);
-  const appleParts = extractApplePartNumbers(latestText);
+  const listingTopics = detectAllListingTopics(latestText);
+  const askedStock = listingTopics.includes("available");
+  const appleParts = askedStock
+    ? applePartsForStockAsk(latestText, context.listing?.title)
+    : extractApplePartNumbers(latestText);
   const listingHay = normalizeHay(context.listing?.title ?? "");
   const foreignApple = appleParts.filter(
     (p) => !listingHay.includes(p.toLowerCase()),
@@ -525,8 +712,6 @@ export async function runAiPipeline(
     signature: sellerProfile?.signature,
     skipAvailability: foreignProductAsk || appleParts.length > 0,
   });
-  const listingTopics = detectAllListingTopics(latestText);
-  const askedStock = listingTopics.includes("available");
   const wantsAvailability =
     askedStock || Boolean(productPhrase) || foreignApple.length > 0;
 
@@ -592,6 +777,10 @@ export async function runAiPipeline(
           foreignProductAsk,
           currentListingTitle: context.listing?.title,
           currentListingInStock:
+            !askedSamsungSkuDiffersFromListing(
+              latestText,
+              context.listing?.title,
+            ) &&
             (context.listing?.quantityAvailable ?? 1) > 0 &&
             (context.listing?.listingStatus ?? "Active").toLowerCase() ===
               "active",
@@ -668,62 +857,6 @@ export async function runAiPipeline(
       reply,
       escalated: false,
     });
-  }
-
-  // Resolve shipment when useful (tracking ask or for fact-pack).
-  const trackingAsk =
-    responsePlan.intent === "shipping_tracking" ||
-    isTrackingRequest(latestText) ||
-    pendingBuyerMessages.some((m) => isTrackingRequest(m.messageBody));
-
-  let shipment = undefined as
-    | Awaited<ReturnType<NonNullable<AiEngineDeps["resolveShipment"]>>>
-    | undefined;
-
-  if (deps.resolveShipment && (trackingAsk || responsePlan.intent === "after_sales")) {
-    shipment = await deps.resolveShipment({
-      conversationId: options.conversationId,
-      itemId: context.listingItemId ?? context.listing?.itemId,
-    });
-  }
-
-  // Tracking / « pas reçu » — factual reply (esp. when marked delivered).
-  if (trackingAsk && shipment) {
-    const delivered =
-      shipment.kind === "shipped" && shipment.trackingStatus === "delivered";
-    const alone =
-      !responsePlan.isMultiQuestion && substantivePending.length <= 1;
-
-    if (alone || delivered) {
-      const followUp = isTrackingFollowUp({
-        messages: context.messages,
-        sellerUsername,
-      });
-      let reply = formatShipmentReply({
-        shipment,
-        languageCode: responsePlan.languageCode,
-        signature: sellerProfile?.signature,
-        followUp,
-      });
-      if (isBuyerUpset(latestText)) {
-        const apology =
-          responsePlan.languageCode === "en"
-            ? "Sorry for the inconvenience. "
-            : "Désolé pour la gêne occasionnée. ";
-        // Insert apology after Bonjour/Hi line when possible.
-        reply = reply.replace(
-          /^(Bonjour|Hi)([,.!]?\s*)/i,
-          `$1$2${apology}`,
-        );
-      }
-      return baseResult(common, {
-        systemPrompt: "",
-        userPrompt: `shipment:${shipment.kind}${followUp ? ":follow_up" : ""}${delivered ? ":delivered" : ""}`,
-        reply,
-        escalated: false,
-        shipment,
-      });
-    }
   }
 
   // RAG — style only, filtered

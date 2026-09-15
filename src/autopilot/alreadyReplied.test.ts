@@ -7,6 +7,7 @@ import {
   isNearDuplicateReply,
   looksLikeOurSellerReply,
   ourRepliesSinceIncoming,
+  sellerAlreadyConfirmedCancel,
   weInitiatedContact,
 } from "./alreadyReplied.js";
 
@@ -151,6 +152,37 @@ describe("weInitiatedContact / foreign listing", () => {
             senderUsername: "luca",
             messageBody: "C'est dispo ?",
             createdDate: "2026-08-19T08:00:00.000Z",
+          },
+        ],
+      }),
+      false,
+    );
+  });
+});
+
+describe("sellerAlreadyConfirmedCancel", () => {
+  it("sees a done cancellation and not a confirm-ask", () => {
+    assert.equal(
+      sellerAlreadyConfirmedCancel({
+        selfUsernames: ["snowwolfsas"],
+        messages: [
+          {
+            senderUsername: "snowwolfsas",
+            messageBody: "D'accord, votre commande sera annulée.",
+            createdDate: "2026-09-01T08:13:00.000Z",
+          },
+        ],
+      }),
+      true,
+    );
+    assert.equal(
+      sellerAlreadyConfirmedCancel({
+        selfUsernames: ["snowwolfsas"],
+        messages: [
+          {
+            senderUsername: "snowwolfsas",
+            messageBody: CANCEL,
+            createdDate: "2026-09-01T08:13:00.000Z",
           },
         ],
       }),

@@ -23,6 +23,33 @@ describe("factualShortcut", () => {
     assert.equal(allowFactualShortcut("Dispo ?"), true);
   });
 
+  it("blocks catalog shortcut on existing-order follow-ups", () => {
+    assert.equal(
+      allowFactualShortcut(
+        "Bonjour avez vous des informations de suivi sur la commande svp ? Merci",
+      ),
+      false,
+    );
+    assert.equal(
+      allowFactualShortcut(
+        "Bonjour avez vous des retours par rapport à ma commande ? Merci",
+      ),
+      false,
+    );
+    assert.equal(
+      allowFactualShortcut(
+        "Bonjour pouvez vous expédier ce que je vous ai commandé ? Merci",
+      ),
+      false,
+    );
+    assert.equal(
+      blocksFactualShortcut(
+        "Bonjour avez vous des retours par rapport à ma commande ? Merci",
+      ),
+      true,
+    );
+  });
+
   it("does not allow stock shortcut when asking return on own device", () => {
     assert.equal(allowFactualShortcut(MACBOOK_DIAG), false);
   });

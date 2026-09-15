@@ -59,10 +59,25 @@ export function selectListingFacts(
   const listingBlob = `${listing.title ?? ""}\n${listing.descriptionText ?? ""}`;
   const repairLine = repairListingFactLine(listingBlob);
   const workingLine = workingPartFactLine(listingBlob, currentAsk);
+  const listingType = (listing.listingType ?? "").trim();
+  const auctionType = /^(chinese|dutch|live|auction)$/i.test(listingType);
 
   const lines: string[] = [];
   if (listing.itemId) lines.push(`ItemID : ${listing.itemId}`);
   if (listing.title?.trim()) lines.push(`Titre : ${listing.title.trim()}`);
+  if (listingType) {
+    if (auctionType) {
+      const bin = Number.parseFloat((listing.buyItNowPrice ?? "").replace(",", "."));
+      const hasBin = Number.isFinite(bin) && bin > 0;
+      lines.push(
+        hasBin
+          ? `Format annonce : ENCHÈRE avec achat immédiat à ${listing.buyItNowPrice} ${listing.currency ?? ""}`.trim()
+          : "Format annonce : ENCHÈRE — PAS d'achat immédiat. Il faut enchérir sur eBay. INTERDIT de dire que l'achat immédiat est possible.",
+      );
+    } else {
+      lines.push(`Format annonce : ${listingType} (achat immédiat)`);
+    }
+  }
   if (repairLine) lines.push(repairLine);
   if (workingLine) lines.push(workingLine);
   if (listing.listingStatus?.trim()) {
@@ -79,7 +94,9 @@ export function selectListingFacts(
 
   if (askPrice && listing.price) {
     lines.push(
-      `Prix : ${listing.price}${listing.currency ? ` ${listing.currency}` : ""}`,
+      auctionType
+        ? `Prix actuel (enchère) : ${listing.price}${listing.currency ? ` ${listing.currency}` : ""} — pas un achat immédiat`
+        : `Prix : ${listing.price}${listing.currency ? ` ${listing.currency}` : ""}`,
     );
   }
 

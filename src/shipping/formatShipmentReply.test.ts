@@ -14,6 +14,16 @@ describe("formatShipmentReply", () => {
     assert.match(text, /pas encore parti/i);
   });
 
+  it("on not-shipped follow-up, confirms we will ship the order", () => {
+    const text = formatShipmentReply({
+      shipment: { kind: "not_shipped" },
+      languageCode: "fr",
+      followUp: true,
+    });
+    assert.match(text, /expédition de votre commande/i);
+    assert.doesNotMatch(text, /en stock|voici le lien/i);
+  });
+
   it("keeps first reply short: sent date + should move", () => {
     const text = formatShipmentReply({
       shipment: {

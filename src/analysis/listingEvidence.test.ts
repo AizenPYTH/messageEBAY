@@ -4,7 +4,9 @@ import type { ListingDetails } from "../ebay/tradingApi.js";
 import { analyzeMessage } from "./analyzeMessage.js";
 import {
   buildListingFactualReply,
+  detectAllListingTopics,
   enrichResponsePlanWithListing,
+  extractAskedModelLabel,
 } from "./listingEvidence.js";
 
 function listing(partial: Partial<ListingDetails>): ListingDetails {
@@ -172,6 +174,106 @@ describe("enrichResponsePlanWithListing", () => {
     assert.doesNotMatch(
       `^${(enriched.suggestedDirectReply ?? "").trim()}$`,
       /^envoi le jour même avant 15h/i,
+    );
+  });
+
+  it("does not treat order-status avez-vous as availability", () => {
+    assert.deepEqual(
+      detectAllListingTopics(
+        "Bonjour avez vous des retours par rapport à ma commande ? Merci",
+      ),
+      [],
+    );
+    assert.deepEqual(
+      detectAllListingTopics(
+        "Bonjour avez vous des informations de suivi sur la commande svp ? Merci",
+      ),
+      [],
+    );
+  });
+
+  it("does not collapse iPhone 11 Pro Max onto the 11 variation", () => {
+    const iphoneScreens = listing({
+      title:
+        "Écran ORIGINAL Apple iPhone X/XR/XS/11/12/13/14/15/16/17 Pro Max – Reconditionné",
+      listingStatus: "Active",
+      quantityAvailable: 8,
+      variations: [
+        {
+          quantity: 1,
+          quantitySold: 1,
+          quantityAvailable: 0,
+          specifics: [{ name: "Modèle", value: "11" }],
+        },
+        {
+          quantity: 4,
+          quantitySold: 0,
+          quantityAvailable: 4,
+          specifics: [{ name: "Modèle", value: "11 Pro Max" }],
+        },
+        {
+          quantity: 3,
+          quantitySold: 0,
+          quantityAvailable: 3,
+          specifics: [{ name: "Modèle", value: "12" }],
+        },
+      ],
+    });
+
+    assert.equal(
+      extractAskedModelLabel("Vous avez un écran iPhone 11 pro Max ?"),
+      "iPhone 11 Pro Max",
+    );
+
+    const proMax = buildListingFactualReply({
+      message: "Vous avez un écran iPhone 11 pro Max ?",
+      listing: iphoneScreens,
+    });
+    assert.equal(proMax.answerability, "direct_yes");
+    assert.match(proMax.reply ?? "", /11 Pro Max/i);
+    assert.doesNotMatch(proMax.reply ?? "", /Non,\s*11\b/i);
+
+    const plain11 = buildListingFactualReply({
+      message: "Vous avez un écran iPhone 11 ?",
+      listing: iphoneScreens,
+    });
+    assert.equal(plain11.answerability, "direct_no");
+    assert.match(plain11.reply ?? "", /11/);
+    assert.doesNotMatch(plain11.reply ?? "", /Pro Max/i);
+  });
+
+  it("does not confirm A135F stock when the buyer asked A137F", () => {
+    assert.equal(
+      extractAskedModelLabel(
+        "Vous avez un écran Samsung a 13 4g modèle a137F?",
+      ),
+      "A137F",
+    );
+    assert.equal(
+      extractAskedModelLabel(
+        "Non je vous ai dit Samsung Galaxy à 13 4g modèle137F",
+      ),
+      "A137F",
+    );
+
+    const a13 = listing({
+      title: "Ecran Complet Galaxy A13 4G (A135F) (Avec châssis)",
+      listingStatus: "Active",
+      quantityAvailable: 4,
+    });
+    const reply = buildListingFactualReply({
+      message: "Vous avez un écran Samsung a 13 4g modèle a137F?",
+      listing: a13,
+    });
+    assert.notEqual(reply.answerability, "direct_yes");
+    assert.doesNotMatch(reply.reply ?? "", /oui/i);
+  });
+
+  it("treats restock / aurez-vous prochainement as availability", () => {
+    assert.ok(
+      detectAllListingTopics("En aurez-vous très prochainement ?").includes(
+        "available",
+      ),
     );
   });
 

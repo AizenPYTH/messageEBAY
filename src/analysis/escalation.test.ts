@@ -33,6 +33,12 @@ describe("detectEscalation", () => {
     );
     assert.equal(d.needsSellerIntervention, true);
     assert.equal(d.reason, "off_platform_payment");
+    assert.equal(
+      detectEscalation(
+        "où je peux payer car sur l'annonce je peux pas payer en achat immédiat ou donner votre Paypal",
+      ).reason,
+      "off_platform_payment",
+    );
   });
 });
 

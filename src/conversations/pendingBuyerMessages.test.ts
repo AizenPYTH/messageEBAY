@@ -120,4 +120,25 @@ describe("collectPendingBuyerMessages", () => {
     assert.equal(filterSubstantivePending(pending).length, 0);
     assert.equal(pendingTextForReply(pending), "");
   });
+
+  it("treats ok-merci-de-votre-aide as a closed thread", () => {
+    assert.equal(isTrivialBuyerAck("Ok, merci de votre aide"), true);
+    const pending = collectPendingBuyerMessages({
+      selfUsername: "seller1",
+      messages: [
+        {
+          senderUsername: "seller1",
+          messageBody:
+            "Je n'ai pas de SSD conçu pour un PC. C'est pour MacBook A1502 / A1398 / A1466.",
+          createdDate: "2026-08-31T22:20:00Z",
+        },
+        {
+          senderUsername: "buyer1",
+          messageBody: "Ok, merci de votre aide",
+          createdDate: "2026-08-31T22:21:00Z",
+        },
+      ],
+    });
+    assert.equal(filterSubstantivePending(pending).length, 0);
+  });
 });

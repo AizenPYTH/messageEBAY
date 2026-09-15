@@ -50,8 +50,9 @@ export function formatShipmentReply(input: {
 
   if (lang === "en") {
     if (s.kind === "not_shipped") {
-      body =
-        "Hi, the parcel hasn't shipped yet. I'll send the tracking as soon as it goes out.";
+      body = input.followUp
+        ? "Hi, yes we're handling shipment of your order. I'll send the tracking as soon as it goes out."
+        : "Hi, the parcel hasn't shipped yet. I'll send the tracking as soon as it goes out.";
     } else if (s.kind === "shipped" && s.trackingNumber) {
       if (s.trackingStatus === "delivered") {
         // Never push INR / dispute on first contact — delivery is the fact.
@@ -72,8 +73,9 @@ export function formatShipmentReply(input: {
       body = "Hi, I'm checking the shipment and will update you shortly.";
     }
   } else if (s.kind === "not_shipped") {
-    body =
-      "Bonjour, le colis n'est pas encore parti. Je vous envoie le suivi dès l'expédition.";
+    body = input.followUp
+      ? "Bonjour, oui on s'occupe de l'expédition de votre commande. Je vous envoie le suivi dès l'envoi."
+      : "Bonjour, le colis n'est pas encore parti. Je vous envoie le suivi dès l'expédition.";
   } else if (s.kind === "shipped" && s.trackingNumber) {
     if (s.trackingStatus === "delivered") {
       // Jamais « ouvrez un litige objet non reçu » d’emblée.

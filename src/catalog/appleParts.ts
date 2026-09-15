@@ -72,6 +72,21 @@ export function askedFinishDiffersFromListing(
   return false;
 }
 
+/**
+ * Stock ask on an Apple listing: use Axxxx from the message, or the single
+ * model in the listing title when the buyer just says « toujours en stock ? ».
+ */
+export function applePartsForStockAsk(
+  message: string,
+  listingTitle?: string | null,
+): string[] {
+  const fromMsg = extractApplePartNumbers(message);
+  if (fromMsg.length > 0) return fromMsg;
+  const fromTitle = extractApplePartNumbers(listingTitle ?? "");
+  if (fromTitle.length === 1) return fromTitle;
+  return [];
+}
+
 /** True if variation SKU/specifics mention this Apple part. */
 export function variationMentionsApplePart(
   variation: {

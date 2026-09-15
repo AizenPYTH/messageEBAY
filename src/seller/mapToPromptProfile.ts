@@ -14,7 +14,7 @@ export function mapSellerProfileRowToPrompt(
     .filter(Boolean);
 
   const negotiationText = `${row.negotiation_policy ?? ""} ${row.custom_instructions ?? ""}`;
-  const negotiationAllowed = /ne négocie|aucune négociation|n['’]accepte jamais une remise|no negotiat/i.test(
+  const negotiationAllowed = /ne négocie|aucune négociation|prix ferme|on peut pas vraiment descendre|n['’]accepte jamais une remise|no negotiat/i.test(
     negotiationText,
   )
     ? false

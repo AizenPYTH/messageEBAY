@@ -6,6 +6,7 @@ import {
   variationMentionsApplePart,
   askedFinishDiffersFromListing,
   extractAskedFinish,
+  applePartsForStockAsk,
 } from "./appleParts.js";
 import {
   buildApplePartsReply,
@@ -19,6 +20,29 @@ describe("extractApplePartNumbers", () => {
       "bonjour est ce que l'écran macbook A2338 est tjr dispo ? et aussi le A1466 dispo ?",
     );
     assert.deepEqual(parts, ["A2338", "A1466"]);
+  });
+});
+
+describe("applePartsForStockAsk", () => {
+  it("uses A1989 from the listing when the buyer only asks stock", () => {
+    assert.deepEqual(
+      applePartsForStockAsk(
+        "Bonjour, toujours en stock ?",
+        "Ecran LCD Original gris Macbook Pro Retina 13 Grade A (A1989)",
+      ),
+      ["A1989"],
+    );
+    assert.deepEqual(
+      applePartsForStockAsk("Vous n'avez plus de A1989 ?", "écran A1708"),
+      ["A1989"],
+    );
+    assert.deepEqual(
+      applePartsForStockAsk(
+        "toujours en stock ?",
+        "ECRAN LCD MACBOOK A2681 A1466 A1706 A1932 A2337 A2338",
+      ),
+      [],
+    );
   });
 });
 
@@ -169,6 +193,31 @@ describe("buildApplePartsReply", () => {
       currentItemId: "318028116955",
     });
     assert.doesNotMatch(result.reply, /ebay\.fr\/itm/i);
+  });
+
+  it("offers another listing when this one is OOS", () => {
+    const result = buildApplePartsReply({
+      parts: [
+        {
+          part: "A1989",
+          available: true,
+          quantity: 3,
+          askedLabel: "A1989",
+          fromOtherListing: true,
+          hit: {
+            itemId: "318099999999",
+            title: "Ecran LCD Original gris Macbook Pro Retina 13 Grade A A1989",
+            quantityAvailable: 3,
+            itemUrl: "https://www.ebay.fr/itm/318099999999",
+            score: 40,
+          },
+        },
+      ],
+      currentItemId: "111",
+    });
+    assert.match(result.reply, /plus sur cette annonce/i);
+    assert.match(result.reply, /318099999999/);
+    assert.doesNotMatch(result.reply, /plus de stock sur le modèle/i);
   });
 
   it("offers Grade B at Grade A price when Grade A gris is OOS", () => {

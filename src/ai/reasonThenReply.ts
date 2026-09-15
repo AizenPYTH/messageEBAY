@@ -95,14 +95,19 @@ function reasoningSystemPrompt(): string {
     "Règles :",
     "- asks = ce que le client veut MAINTENANT. Si plusieurs messages d'affilée : lists TOUS les points, pas seulement le dernier.",
     "- Si le fil parle d'un RETOUR déjà envoyé (suivi) : outline = NO_REPLY — n'invente pas de stock / expédition.",
+    "- Annonce Axxxx épuisée : si le shop a le même modèle ailleurs, outline = donner l'autre lien. INTERDIT « plus de A1989 du tout ».",
+    "- Commande déjà passée (suivi, « expédier ce que j'ai commandé », nouvelles de la commande) : outline = suivi / expédition de CETTE commande. INTERDIT lien catalogue / autre annonce / « oui on a X en stock ».",
     "- factsToUse = uniquement des faits présents dans FAITS (titre + description inclus).",
     "- mustAvoid = sujets à ne pas inventer / pas demandés (PayPal, litige, retour, stock… si absents).",
     "- outline = plan de réponse en 1 phrase, concret — uniquement aux asks.",
     "- Si le ton est CONTRARIÉ : l'outline doit commencer par s'excuser.",
     "- Évite retours et litiges dans l'outline sauf si le client y insiste déjà.",
     "- Si le message n'attend rien (merci / ok / salutation seule) : outline = NO_REPLY.",
-    "- Si un détail manque : outline = répondre honnêtement avec ce qui est dans FAITS (ne pas inventer). PAS NO_REPLY pour une question normale.",
+    "- Si un détail manque et tu ne peux pas répondre utilement avec les FAITS : outline = NO_REPLY. INTERDIT de planifier « je n'ai pas d'info ».",
+    "- Inclus (Touch Bar, trackpad…) non écrit dans l'annonce : outline = NO_REPLY. INTERDIT d'inventer un non.",
     "- INTERDIT d'ajouter une info non demandée « au cas où ».",
+    "- Facture / TVA : outline = NO_REPLY.",
+    "- Garantie : 3 mois (fait boutique).",
   ].join("\n");
 }
 
@@ -128,7 +133,9 @@ function draftSystemPrompt(
       ? "OBLIGATOIRE : le client est contrarié — première phrase = excuse courte."
       : "Ton : calme et direct.",
     `Langue obligatoire : ${languageLabel}.`,
-    "Si tu ne peux pas répondre utilement avec les FAITS : dis-le simplement (sans inventer). NO_REPLY seulement si merci/ok/rien demandé.",
+    "Si tu ne peux pas répondre utilement avec les FAITS : NO_REPLY. INTERDIT « je n'ai pas d'informations / je ne peux pas confirmer ».",
+    "Facture : NO_REPLY (ne dis jamais que tu l'as envoyée).",
+    "Garantie : 3 mois.",
     "Sortie : uniquement le texte du message eBay (pas de JSON, pas de notes) — ou NO_REPLY.",
     signature?.trim()
       ? `Si tu réponds (pas NO_REPLY), termine avec exactement cette signature :\n${signature.trim()}`

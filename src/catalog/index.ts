@@ -9,6 +9,7 @@ export {
   searchSellerCatalogLive,
   extractCatalogSearchTokens,
   extractAskedProductPhrase,
+  catalogTitleMatchesAsk,
   type CatalogHit,
 } from "./searchCatalog.js";
 export { verifyCatalogHitsLive } from "./verifyLive.js";
@@ -18,6 +19,7 @@ export {
   variationMentionsApplePart,
   extractAskedFinish,
   askedFinishDiffersFromListing,
+  applePartsForStockAsk,
 } from "./appleParts.js";
 export {
   resolveApplePartsStock,

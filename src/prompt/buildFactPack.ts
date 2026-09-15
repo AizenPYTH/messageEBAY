@@ -87,7 +87,9 @@ export function buildFactPack(input: {
     policyLines.push(`Négociation : ${p.negotiationPolicyText.trim()}`);
   }
   if (p?.negotiationAllowed === false) {
-    policyLines.push("Négociation de prix : non autorisée.");
+    policyLines.push(
+      "Prix ferme : dire le tarif de l'annonce, ton vendeur (« on peut pas vraiment descendre »). INTERDIT « la négociation n'est pas autorisée ». INTERDIT d'inviter une offre.",
+    );
   }
 
   const joinedAsks = buyerAsks.join("\n");

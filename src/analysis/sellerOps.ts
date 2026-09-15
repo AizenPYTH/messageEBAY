@@ -25,7 +25,19 @@ const INVOICE_ASK: RegExp[] = [
   /\binvoice\b/i,
   /\bavec\s+tva\b/i,
   /\bfacture\s+tva\b/i,
+  /\bfattura\b/i,
+  /\brechnung\b/i,
 ];
+
+const WARRANTY_ASK: RegExp[] = [
+  /\bgaranti[ea]?\b/i,
+  /\bwarranty\b/i,
+  /\bgarantie\b/i,
+  /\bgaranzia\b/i,
+];
+
+/** Shop warranty — always 3 months when asked. */
+export const SELLER_WARRANTY_MONTHS = 3;
 
 const REPAIR_LISTING: RegExp[] = [
   /\bpour\s+r[ée]paration\b/i,
@@ -49,6 +61,23 @@ export function isInvoiceAsk(text: string | undefined): boolean {
   const raw = (text ?? "").replace(/\s+/g, " ").trim();
   if (!raw) return false;
   return INVOICE_ASK.some((re) => re.test(raw));
+}
+
+export function isWarrantyAsk(text: string | undefined): boolean {
+  const raw = (text ?? "").replace(/\s+/g, " ").trim();
+  if (!raw) return false;
+  return WARRANTY_ASK.some((re) => re.test(raw));
+}
+
+export function formatWarrantyReply(input: {
+  languageCode?: string;
+  signature?: string;
+}): string {
+  const sig = input.signature?.trim() || "Cordialement,\nSNOWOLF";
+  if (input.languageCode === "en") {
+    return `Hi,\n\nWarranty is ${SELLER_WARRANTY_MONTHS} months.\n\n${sig}`;
+  }
+  return `Bonjour,\n\nLa garantie est de ${SELLER_WARRANTY_MONTHS} mois.\n\n${sig}`;
 }
 
 export function isRepairListing(text: string | undefined): boolean {

@@ -1,7 +1,7 @@
 import { isFromSelf } from "../conversations/messageSides.js";
 import type { EbayMessage } from "../ebay/messageApi.js";
 import { detectEscalation, type EscalationReason } from "./escalation.js";
-import { isInvoiceAsk, isLocalPickupAsk, isColorPreferenceReturn, isReturnAddressAsk } from "./sellerOps.js";
+import { isInvoiceAsk, isLocalPickupAsk, isColorPreferenceReturn, isReturnAddressAsk, isWarrantyAsk } from "./sellerOps.js";
 
 /** Price (EUR-equivalent) above which we may auto-offer a ~10% gesture. */
 export const PARTIAL_REFUND_MIN_PRICE = 50;
@@ -22,6 +22,7 @@ export type SellerCaseKind =
   | "local_pickup"
   | "color_preference_return"
   | "return_address_ask"
+  | "warranty_ask"
   | "none";
 
 export type SellerCaseDecision = {
@@ -36,7 +37,8 @@ export type SellerCaseDecision = {
     | "wrong_address_cancel"
     | "refuse_pickup"
     | "color_preference_return"
-    | "return_address";
+    | "return_address"
+    | "warranty";
 };
 
 const RETURN_LABEL_PATTERNS: RegExp[] = [
@@ -266,6 +268,7 @@ const CASE_SUMMARIES: Record<Exclude<SellerCaseKind, "none">, string> = {
     "Retour couleur (annonce claire) — frais acheteur, pas de bordereau prépayé",
   return_address_ask:
     "Adresse de retour demandée — réponse auto (7 square Stalingrad)",
+  warranty_ask: "Question garantie — réponse auto (3 mois)",
 };
 
 export function parseListingPrice(price?: string | null): number | undefined {
@@ -454,12 +457,22 @@ export function classifySellerCase(input: {
     };
   }
 
-  // Facture / TVA — seller sends it, auto must not promise anything.
+  // Facture / TVA — seller sends it, auto must not promise anything / claim sent.
   if (isInvoiceAsk(text)) {
     return {
       kind: "invoice_request",
       summaryFr: CASE_SUMMARIES.invoice_request,
       needsSellerIntervention: true,
+    };
+  }
+
+  // Garantie boutique = 3 mois (known fact, no LLM hedge).
+  if (isWarrantyAsk(text)) {
+    return {
+      kind: "warranty_ask",
+      summaryFr: CASE_SUMMARIES.warranty_ask,
+      needsSellerIntervention: false,
+      autoReplyKind: "warranty",
     };
   }
 

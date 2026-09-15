@@ -71,5 +71,6 @@ export type ResponsePlan = {
     | "wrong_address_cancel"
     | "refuse_pickup"
     | "color_preference_return"
-    | "return_address";
+    | "return_address"
+    | "warranty";
 };

@@ -4,7 +4,16 @@ import { listVariationsForListingIds } from "../database/repositories/listingVar
 import {
   extractAskedModelLabel,
 } from "../analysis/listingEvidence.js";
+import {
+  parseIphoneModel,
+  variationIsAskedIphone,
+  extractSamsungBoardCode,
+  detectPhoneBrand,
+  phoneBrandsClash,
+} from "../analysis/phoneModel.js";
 import type { ListingRow, ListingVariationRow } from "../database/types.js";
+import { isTrackingRequest } from "../shipping/detectTracking.js";
+import { isInclusionAsk } from "../analysis/inclusionAsk.js";
 import { verifyCatalogHitsLive } from "./verifyLive.js";
 
 export type CatalogHit = {
@@ -62,6 +71,20 @@ const STOP = new Set([
   "ces",
   "cet",
   "cette",
+  "suivi",
+  "tracking",
+  "informations",
+  "information",
+  "infos",
+  "info",
+  "retours",
+  "retour",
+  "nouvelles",
+  "nouvelle",
+  "rapport",
+  "commande",
+  "commandee",
+  "commandes",
 ]);
 
 function normalize(value: string): string {
@@ -73,18 +96,34 @@ function normalize(value: string): string {
     .trim();
 }
 
+const PRODUCT_HINT =
+  /\b(macbook|iphone|ipad|surface|ecran|[ée]cran|clavier|topcase|batterie|carte|puce|lyca|sim|touchpad|trackpad|chargeur|lcd|a\d{4}|pro\s*\d)\b/i;
+
+const ORDER_STATUS_PHRASE =
+  /\b(suivi|tracking|informations?|infos?|retours?|nouvelles?|commande|command[ée]e?s?|rapport|svp|merci)\b/i;
+
 /** Phrase after "avez-vous / tu as …" → other-product ask. */
 export function extractAskedProductPhrase(message: string): string | null {
+  if (isTrackingRequest(message)) return null;
+  if (isInclusionAsk(message)) return null;
   const m = message.match(
     /\b(?:avez[- ]vous|vous\s+avez|as[- ]tu|tu\s+as|y\s+a[- ]t[- ]il)\s+(?:encore\s+|toujours\s+)?(?:des?\s+|du\s+|de\s+la\s+|d['’]\s*)?([^?.;,\n]{3,60})/i,
   );
   if (!m?.[1]) return null;
   const phrase = m[1].replace(/\b(dispo|disponible|en\s+stock)\b/gi, "").trim();
-  return phrase.length >= 3 ? phrase : null;
+  if (phrase.length < 3) return null;
+  // "avez-vous des informations de suivi / des retours par rapport à ma commande"
+  // is not a product name — never feed it to "oui on a X en stock".
+  if (ORDER_STATUS_PHRASE.test(phrase) && !PRODUCT_HINT.test(phrase)) {
+    return null;
+  }
+  return phrase;
 }
 
 export function extractCatalogSearchTokens(message: string): string[] {
   const tokens: string[] = [];
+  const samsungBoard = extractSamsungBoardCode(message);
+  const brand = detectPhoneBrand(message);
   const model = extractAskedModelLabel(message);
   if (model) {
     tokens.push(...normalize(model).split(" ").filter(Boolean));
@@ -99,9 +138,21 @@ export function extractCatalogSearchTokens(message: string): string[] {
   for (const w of normalize(message).split(" ")) {
     if (w.length < 3 || STOP.has(w)) continue;
     if (/^\d+$/.test(w) && w.length < 2) continue;
+    if (samsungBoard && /^\d{1,2}$/.test(w)) continue;
+    if (brand === "samsung" && (w === "iphone" || w === "apple")) continue;
+    if (brand === "iphone" && (w === "samsung" || w === "galaxy")) continue;
     if (!tokens.includes(w)) tokens.push(w);
   }
   return tokens.slice(0, 8);
+}
+
+/** Drop iPhone hits for a Samsung board-code ask (A137F ≠ iPhone 13 ≠ A135F). */
+export function catalogTitleMatchesAsk(title: string, message: string): boolean {
+  const hay = normalize(title);
+  if (phoneBrandsClash(message, title)) return false;
+  const askedBoard = extractSamsungBoardCode(message);
+  if (askedBoard && !hay.includes(askedBoard.toLowerCase())) return false;
+  return true;
 }
 
 function variationLabel(v: ListingVariationRow): string {
@@ -114,10 +165,13 @@ function variationMatchesModel(
   askedModel: string | null,
 ): boolean {
   if (!askedModel) return false;
+  const blob = `${variationLabel(v)} ${(v.specifics ?? []).map((s) => `${s.name} ${s.value}`).join(" ")} ${v.sku ?? ""}`;
+  const askedPhone = parseIphoneModel(askedModel);
+  if (askedPhone) {
+    return variationIsAskedIphone(askedPhone, blob);
+  }
   const asked = normalize(askedModel);
-  const hay = normalize(
-    `${variationLabel(v)} ${(v.specifics ?? []).map((s) => `${s.name} ${s.value}`).join(" ")}`,
-  );
+  const hay = normalize(blob);
   if (hay.includes(asked)) return true;
   // "Surface Pro 8" vs "PRO 8"
   const num = askedModel.match(/(\d+)/)?.[1];
@@ -136,7 +190,11 @@ function scoreHit(input: {
   variations: ListingVariationRow[];
   tokens: string[];
   askedModel: string | null;
+  message: string;
 }): CatalogHit | null {
+  if (!catalogTitleMatchesAsk(input.row.title ?? "", input.message)) {
+    return null;
+  }
   const hay = normalize(`${input.row.title ?? ""} ${input.row.search_text ?? ""}`);
   let score = 0;
   for (const token of input.tokens) {
@@ -217,6 +275,7 @@ export async function searchSellerCatalog(input: {
       variations: byListing.get(row.id) ?? [],
       tokens,
       askedModel,
+      message: input.message,
     });
     if (hit) hits.push(hit);
   }

@@ -81,6 +81,28 @@ describe("assessReplyQuality", () => {
     assert.ok(qa.issues.includes("robotic"));
   });
 
+  it("blocks je n'ai pas d'informations hedges", () => {
+    const qa = assessReplyQuality({
+      currentAsk: "Quelle est la garantie ?",
+      reply:
+        "Bonjour,\nJe n'ai pas d'informations concernant la garantie.\nCordialement,\nSNOWOLF",
+      listing,
+    });
+    assert.equal(qa.block, true);
+    assert.ok(qa.issues.includes("robotic"));
+  });
+
+  it("blocks any reply to an invoice ask including fake sent claims", () => {
+    const qa = assessReplyQuality({
+      currentAsk: "Pouvez-vous m'envoyer la facture ?",
+      reply:
+        "Bonjour,\nJe vous ai envoyé la facture.\nCordialement,\nSNOWOLF",
+      listing,
+    });
+    assert.equal(qa.block, true);
+    assert.ok(qa.issues.includes("invented"));
+  });
+
   it("blocks untested hedge on a Grade A générique screen", () => {
     const screen: ListingDetails = {
       ...listing,
@@ -154,5 +176,149 @@ describe("assessReplyQuality", () => {
     });
     assert.equal(qa.block, true);
     assert.ok(qa.issues.includes("robotic"));
+  });
+
+  it("blocks catalog stock links on an existing-order ask", () => {
+    const qa = assessReplyQuality({
+      currentAsk:
+        "Bonjour avez vous des retours par rapport à ma commande ? Merci",
+      reply:
+        "Bonjour,\nOui on a retours par rapport à ma commande en stock, voici le lien : https://www.ebay.fr/itm/318028167867\nCordialement,\nSNOWOLF",
+      listing: {
+        ...listing,
+        title:
+          "Gris sidéral Keyboard topcase clavier QWERTY DNK Macbook Pro 14 A2442/A2779",
+      },
+    });
+    assert.equal(qa.block, true);
+    assert.ok(qa.issues.includes("off_topic"));
+  });
+
+  it("blocks a wrong listing link when the buyer asks to ship their order", () => {
+    const qa = assessReplyQuality({
+      currentAsk: "Bonjour pouvez vous expédier ce que je vous ai commandé ? Merci",
+      reply:
+        "Bonjour,\nOui on a informations de suivi sur la commande svp en stock, voici le lien : https://www.ebay.fr/itm/318028124902\nCordialement,\nSNOWOLF",
+      listing: {
+        ...listing,
+        title:
+          "Gris sidéral Keyboard topcase clavier QWERTY DNK Macbook Pro 14 A2442/A2779",
+      },
+    });
+    assert.equal(qa.block, true);
+    assert.ok(qa.issues.includes("off_topic"));
+  });
+
+  it("blocks invented no-Touch-Bar on a topcase listing that does not say so", () => {
+    const qa = assessReplyQuality({
+      currentAsk:
+        "Bonjour, ce top case fonctionne-t-il correctement et comprend également une barre tactile et un trackpad ?",
+      reply:
+        "Yes, it is fully functional. However, please note that it does not include the Touch Bar and trackpad, as it is just the top case.\nCordialement,\nSNOWOLF",
+      listing: {
+        ...listing,
+        title:
+          "Keyboard topcase clavier QWERTY SWEDEN APPLE MacBook PRO 13 2020 A2338 M1GRIS",
+      },
+    });
+    assert.equal(qa.block, true);
+    assert.ok(qa.issues.includes("invented"));
+  });
+
+  it("blocks a cancel-confirm after the buyer already closed with thanks", () => {
+    const qa = assessReplyQuality({
+      currentAsk:
+        "Je m'excuse beaucoup pour la confusion que j'ai créée. Je vous en suis vraiment très reconnaissant. Merci beaucoup de salutations cordiales",
+      reply:
+        "Bonjour,\nOui je peux annuler la commande directement de mon côté. Vous confirmez l'annulation ?\nCordialement,\nSNOWOLF",
+      listing,
+      messages: [
+        {
+          senderUsername: "snowwolfsas",
+          messageBody: "Bonjour,\nD'accord, votre commande sera annulée.\nBien cordialement,",
+          createdDate: "2026-09-01T08:13:00.000Z",
+        },
+      ],
+      selfUsernames: ["snowwolfsas"],
+    });
+    assert.equal(qa.block, true);
+    assert.ok(
+      qa.issues.includes("off_topic") || qa.issues.includes("duplicate"),
+    );
+  });
+
+  it("blocks invented Buy It Now on an auction listing", () => {
+    const qa = assessReplyQuality({
+      currentAsk: "Achat immédiat possible ?",
+      reply:
+        "Oui, l'achat est possible immédiatement pour l'Apple iPhone SE 2020.\nCordialement,\nSNOWOLF",
+      listing: {
+        ...listing,
+        title: "Apple iPhone SE 2020 64Go Rouge – Batterie 74% – Fonctionnel",
+        listingType: "Chinese",
+        price: "35.0",
+        currency: "EUR",
+      },
+    });
+    assert.equal(qa.block, true);
+    assert.ok(qa.issues.includes("invented"));
+  });
+
+  it("blocks a shipping-rates reply to quel prix", () => {
+    const qa = assessReplyQuality({
+      currentAsk: "Quel prix merci",
+      reply:
+        "Les frais d'envoi sont ceux de l'annonce : 0 € (France) / LaPosteColissimoInternational 15,0 EUR (étranger). Je ne peux pas les modifier.\nCordialement,\nSNOWOLF",
+      listing: {
+        ...listing,
+        listingType: "Chinese",
+        price: "35.0",
+        currency: "EUR",
+      },
+    });
+    assert.equal(qa.block, true);
+    assert.ok(qa.issues.includes("off_topic"));
+  });
+
+  it("blocks legal negotiation jargon and a wrong Grade A", () => {
+    const qa = assessReplyQuality({
+      currentAsk: "quels serait votre marge de négociation ?",
+      reply:
+        "Je suis désolé, mais la négociation de prix n'est pas autorisée pour cet écran. Le tarif affiché est le prix final.\nCordialement,\nSNOWOLF",
+      listing: {
+        ...listing,
+        title: 'ÉCRAN LCD COMPLET POUR MACBOOK PRO 16" A2485 A2780 GRIS GRADE B',
+        price: "459.00",
+        currency: "EUR",
+      },
+    });
+    assert.equal(qa.block, true);
+    assert.ok(qa.issues.includes("robotic"));
+
+    const grade = assessReplyQuality({
+      currentAsk: "bonjour disponible? quels serait votre dernier prix",
+      reply:
+        "Je suis disponible pour discuter du prix de l'ÉCRAN LCD COMPLET POUR MACBOOK PRO 16\" A2485 A2780 GRIS GRADE A.\nMerci de me faire part de votre proposition.\nCordialement,\nSNOWOLF",
+      listing: {
+        ...listing,
+        title: 'ÉCRAN LCD COMPLET POUR MACBOOK PRO 16" A2485 A2780 GRIS GRADE B',
+      },
+    });
+    assert.equal(grade.block, true);
+    assert.ok(grade.issues.includes("invented") || grade.issues.includes("robotic"));
+  });
+
+  it("blocks an iPhone catalog link on a Samsung Galaxy A13 ask", () => {
+    const qa = assessReplyQuality({
+      currentAsk: "Vous avez un écran Samsung a 13 4g modèle a137F?",
+      reply:
+        "Bonjour,\nOui le écran est tjr dispo, envoi le jour même avant 15h (sauf samedi et dimanche). Oui on a iPhone 13 en stock, voici le lien : https://www.ebay.fr/itm/318081183144\nCordialement,\nSNOWOLF",
+      listing: {
+        ...listing,
+        title: "Ecran Complet Galaxy A13 4G (A135F) (Avec châssis)",
+      },
+    });
+    assert.equal(qa.block, true);
+    assert.ok(qa.issues.includes("off_topic"));
   });
 });

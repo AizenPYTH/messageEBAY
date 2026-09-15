@@ -5,7 +5,6 @@ import type { ListingRow, ListingVariationRow } from "../database/types.js";
 import type { ListingDetails } from "../ebay/tradingApi.js";
 import { getListingDetails } from "../ebay/tradingApi.js";
 import {
-  extractApplePartNumbers,
   messageAsksScreen,
   titleIsMultiAppleModel,
   titleLooksLikeScreen,
@@ -13,6 +12,8 @@ import {
   extractAskedFinish,
   listingFinish,
   askedFinishDiffersFromListing,
+  applePartsForStockAsk,
+  type AskedFinish,
 } from "./appleParts.js";
 import type { CatalogHit } from "./searchCatalog.js";
 import { verifyCatalogHitsLive } from "./verifyLive.js";
@@ -26,6 +27,8 @@ export type PartStockResult = {
   askedLabel?: string;
   /** No Grade A in that colour — offer this Grade B at the Grade A price. */
   samePriceDowngrade?: boolean;
+  /** Current conversation listing is OOS — this hit is another listing. */
+  fromOtherListing?: boolean;
 };
 
 function normalize(value: string): string {
@@ -213,12 +216,18 @@ function askedPartLabel(part: string, message: string): string {
   return bits.join(" ");
 }
 
+function mergeAskedFinish(asked: AskedFinish, fallback: AskedFinish): AskedFinish {
+  return {
+    color: asked.color ?? fallback.color,
+    grade: asked.grade ?? fallback.grade,
+  };
+}
+
 function pickStockHit(
   inStock: CatalogHit[],
-  message: string,
+  asked: AskedFinish,
 ): { hit: CatalogHit; samePriceDowngrade: boolean } | null {
   if (inStock.length === 0) return null;
-  const asked = extractAskedFinish(message);
   const ranked = [...inStock].sort((a, b) => b.score - a.score);
   if (!asked.color && !asked.grade) {
     return { hit: ranked[0]!, samePriceDowngrade: false };
@@ -241,15 +250,18 @@ function pickStockHit(
   }
   return { hit: sameColor[0]!, samePriceDowngrade: false };
 }
+
 async function findBestHitForPart(input: {
   sellerId: string;
   part: string;
   message: string;
   sellerUsername: string;
   excludeItemId?: string;
+  preferScreen?: boolean;
+  askedFinish?: AskedFinish;
 }): Promise<{ hit: CatalogHit; samePriceDowngrade: boolean } | null> {
-  const preferScreen = messageAsksScreen(input.message);
-  const asked = extractAskedFinish(input.message);
+  const preferScreen = input.preferScreen ?? messageAsksScreen(input.message);
+  const asked = input.askedFinish ?? extractAskedFinish(input.message);
   const tokens = preferScreen
     ? [input.part.toLowerCase(), "ecran", "lcd"]
     : [input.part.toLowerCase()];
@@ -298,7 +310,7 @@ async function findBestHitForPart(input: {
     }
     return h.quantityAvailable > 0;
   });
-  const picked = pickStockHit(inStock, input.message);
+  const picked = pickStockHit(inStock, asked);
   if (picked) return picked;
   const oos = live[0] ?? scored[0];
   if (!oos) return null;
@@ -315,7 +327,10 @@ export async function resolveApplePartsStock(input: {
   /** Conversation listing — preferred source when it covers the asked part. */
   currentListing?: ListingDetails;
 }): Promise<PartStockResult[]> {
-  const parts = extractApplePartNumbers(input.message);
+  const parts = applePartsForStockAsk(
+    input.message,
+    input.currentListing?.title,
+  );
   if (parts.length === 0) return [];
 
   const seller = await getSellerByUsername(input.sellerUsername);
@@ -323,44 +338,69 @@ export async function resolveApplePartsStock(input: {
 
   const results: PartStockResult[] = [];
   for (const part of parts) {
-    // 1) Part on the conversation listing → answer only from that listing.
+    let onCurrent: PartStockResult | null = null;
     if (input.currentListing) {
-      const onCurrent = await resolvePartOnCurrentListing({
+      onCurrent = await resolvePartOnCurrentListing({
         listing: input.currentListing,
         part,
         message: input.message,
       });
-      if (onCurrent) {
+      // In stock on this conversation listing → answer from here only.
+      if (onCurrent?.available) {
         results.push(onCurrent);
         continue;
       }
     }
 
-    // 2) Part not on current listing → search dedicated catalog listings.
+    // This listing is OOS (or the part isn't on it) → look shop-wide.
+    const samePartOnListing = Boolean(onCurrent);
     const found = await findBestHitForPart({
       sellerId: seller.id,
       part,
       message: input.message,
       sellerUsername: input.sellerUsername,
-      excludeItemId: input.excludeItemId,
+      excludeItemId: input.excludeItemId ?? input.currentListing?.itemId,
+      preferScreen:
+        messageAsksScreen(input.message) ||
+        titleLooksLikeScreen(input.currentListing?.title ?? ""),
+      askedFinish: mergeAskedFinish(
+        extractAskedFinish(input.message),
+        samePartOnListing
+          ? listingFinish(input.currentListing?.title)
+          : {},
+      ),
     });
     const label = askedPartLabel(part, input.message);
     if (!found) {
-      results.push({ part, available: false, quantity: 0, askedLabel: label });
+      results.push(
+        onCurrent ?? { part, available: false, quantity: 0, askedLabel: label },
+      );
       continue;
     }
     const qty =
       typeof found.hit.matchedVariationQty === "number"
         ? found.hit.matchedVariationQty
         : found.hit.quantityAvailable;
-    results.push({
-      part,
-      available: qty > 0,
-      quantity: qty,
-      hit: qty > 0 ? found.hit : undefined,
-      askedLabel: label,
-      samePriceDowngrade: Boolean(found.samePriceDowngrade && qty > 0),
-    });
+    if (qty > 0) {
+      results.push({
+        part,
+        available: true,
+        quantity: qty,
+        hit: found.hit,
+        askedLabel: label,
+        samePriceDowngrade: Boolean(found.samePriceDowngrade),
+        fromOtherListing: Boolean(onCurrent && !onCurrent.available),
+      });
+      continue;
+    }
+    results.push(
+      onCurrent ?? {
+        part,
+        available: false,
+        quantity: 0,
+        askedLabel: label,
+      },
+    );
   }
   return results;
 }
@@ -390,6 +430,12 @@ export function buildApplePartsReply(input: {
     }
     if (p.available && p.hit) {
       const sameListing = Boolean(currentId && p.hit.itemId === currentId);
+      if (p.fromOtherListing && !sameListing) {
+        bits.push(
+          `Plus sur cette annonce, par contre le ${label} est tjr dispo ici : ${p.hit.itemUrl}`,
+        );
+        continue;
+      }
       bits.push(
         input.parts.length === 1
           ? sameListing

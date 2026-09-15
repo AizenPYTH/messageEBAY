@@ -19,6 +19,18 @@ const TRACKING_PATTERNS: RegExp[] = [
   /\b(toujours|pas)\s+arriv[eé]\b/i,
   /\bobjet\s+non\s+re[cç]u\b/i,
   /\bitem\s+not\s+received\b/i,
+  // News / update on an existing order — FR « retours » = feedback, not a return.
+  /\b(retours?|nouvelles?|infos?|informations?)\s+(par\s+rapport\s+[àa]|concernant|sur|de)\s+(ma\s+)?commande\b/i,
+  /\binformations?\s+de\s+suivi\b/i,
+  /\bany\s+(news|update)s?\s+(on|about)\s+(my\s+)?order\b/i,
+  // Ship what was already ordered — not a catalog / stock ask.
+  /\b(exp[ée]di(?:er|ez)|envoy(?:er|ez))\s+ce\s+que\s+(je\s+(vous\s+)?ai|j['’]ai)\s+command/i,
+  /\b(exp[ée]di(?:er|ez)|envoy(?:er|ez))\s+(ma\s+)?commande\b/i,
+  /\bship\s+what\s+i\s+ordered\b/i,
+  /\bcan\s+you\s+(please\s+)?(ship|send)\s+(my\s+)?order\b/i,
+  // Buyer says the last listing link was the wrong item.
+  /\ble\s+lien\s+(ne\s+)?correspond\s+pas\b/i,
+  /\blink\s+(doesn['’]?t|does\s+not)\s+match\b/i,
 ];
 
 /** True when the buyer is asking about package / tracking status. */
