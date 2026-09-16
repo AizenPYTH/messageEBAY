@@ -4,10 +4,11 @@ import {
   matchListingVariation,
 } from "../analysis/listingEvidence.js";
 import {
+  canAssertSameProduct,
   extractAskedIdentity,
-  identityMatchesText,
   isEmptyIdentity,
 } from "../product/identity.js";
+import { listingIdentityText } from "../product/listingText.js";
 import type { ListingVariation } from "../ebay/tradingApi.js";
 import { getListingDetails } from "../ebay/tradingApi.js";
 import {
@@ -65,13 +66,11 @@ export async function verifyCatalogHitsLive(input: {
     // The live title is the authority on what this listing actually is. A hit
     // that scored on shared words but names another model is dropped here — the
     // stock check below would otherwise confirm a product nobody asked for.
-    if (!isEmptyIdentity(askedIdentity)) {
-      const titleBlob = [listing.title ?? "", hit.title]
-        .filter(Boolean)
-        .join(" \n ");
-      if (identityMatchesText(askedIdentity, titleBlob) === "mismatch") {
-        continue;
-      }
+    const liveText = [listingIdentityText(listing), hit.matchText ?? hit.title]
+      .filter(Boolean)
+      .join(" \n ");
+    if (!isEmptyIdentity(askedIdentity) && !canAssertSameProduct(askedIdentity, liveText)) {
+      continue;
     }
 
     if (seller) {
@@ -127,6 +126,7 @@ export async function verifyCatalogHitsLive(input: {
     const liveHit: CatalogHit = {
       ...hit,
       title: listing.title ?? hit.title,
+      matchText: liveText,
       quantityAvailable,
       matchedVariationLabel,
       matchedVariationQty,

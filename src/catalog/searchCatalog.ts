@@ -5,8 +5,8 @@ import {
   extractAskedModelLabel,
 } from "../analysis/listingEvidence.js";
 import {
+  canAssertSameProduct,
   extractAskedIdentity,
-  identityMatchesText,
   isEmptyIdentity,
   isGenericPartWord,
   type ProductIdentity,
@@ -17,6 +17,8 @@ import { verifyCatalogHitsLive } from "./verifyLive.js";
 export type CatalogHit = {
   itemId: string;
   title: string;
+  /** Everything the listing says it is — title, specifics, SKUs. */
+  matchText?: string;
   quantityAvailable: number;
   itemUrl: string;
   matchedVariationLabel?: string;
@@ -163,12 +165,10 @@ function scoreHit(input: {
   const rowText = `${input.row.title ?? ""} ${input.row.search_text ?? ""}`;
   const hay = normalize(rowText);
 
-  // Hard gate: a listing for another product is never a candidate, however many
-  // generic words it shares with the question.
+  // Hard gate: a listing we cannot show is the asked product is never proposed.
+  // A coded question needs the code, not merely the absence of a contradiction.
   if (!isEmptyIdentity(input.askedIdentity)) {
-    if (identityMatchesText(input.askedIdentity, rowText) === "mismatch") {
-      return null;
-    }
+    if (!canAssertSameProduct(input.askedIdentity, rowText)) return null;
   }
 
   // At least one token must identify the product. Without this, every screen in
@@ -215,6 +215,7 @@ function scoreHit(input: {
   return {
     itemId: input.row.item_id,
     title: input.row.title ?? input.row.item_id,
+    matchText: rowText,
     quantityAvailable: input.row.quantity_available ?? 0,
     itemUrl:
       input.row.item_url ?? `https://www.ebay.fr/itm/${input.row.item_id}`,

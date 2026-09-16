@@ -63,6 +63,7 @@ export type AiEngineDeps = {
     Array<{
       itemId: string;
       title: string;
+      matchText?: string;
       quantityAvailable: number;
       itemUrl: string;
       matchedVariationLabel?: string;

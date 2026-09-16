@@ -25,11 +25,13 @@ import {
   stripReplyEnvelope,
 } from "../catalog/index.js";
 import {
+  canAssertSameProduct,
   describeIdentity,
   extractAskedIdentity,
   identityMatchesText,
   isEmptyIdentity,
 } from "../product/identity.js";
+import { listingIdentityText } from "../product/listingText.js";
 import type { ListingDetails } from "../ebay/tradingApi.js";
 import {
   collectPendingBuyerMessages,
@@ -88,17 +90,6 @@ function normalizeHay(value: string): string {
     .trim();
 }
 
-/** Everything the conversation listing says it is: title + variation specifics. */
-function listingIdentityBlob(listing: ListingDetails | undefined): string {
-  if (!listing) return "";
-  return [
-    listing.title ?? "",
-    ...listing.variations.flatMap((v) =>
-      v.specifics.map((spec) => `${spec.name} ${spec.value}`),
-    ),
-  ].join(" \n ");
-}
-
 /**
  * True when the conversation listing is the product the buyer asked about.
  *
@@ -114,7 +105,7 @@ function listingCoversProductAsk(
 
   const asked = extractAskedIdentity(message);
   if (!isEmptyIdentity(asked)) {
-    const verdict = identityMatchesText(asked, listingIdentityBlob(listing));
+    const verdict = identityMatchesText(asked, listingIdentityText(listing));
     if (verdict === "match") return true;
     if (verdict === "mismatch") return false;
   }
@@ -629,11 +620,12 @@ export async function runAiPipeline(
   const coversAsk = listingCoversProductAsk(latestText, context.listing);
   const askedIdentity = extractAskedIdentity(latestText);
   const askedProductIdentified = !isEmptyIdentity(askedIdentity);
-  // Only claim the conversation listing is "tjr dispo" when it is what they asked for.
-  const currentListingAnswersAsk =
-    !askedProductIdentified ||
-    identityMatchesText(askedIdentity, listingIdentityBlob(context.listing)) !==
-      "mismatch";
+  // Only claim the conversation listing is "tjr dispo" once we can show it is
+  // what they asked for. For a coded ask, "not refuted" is not good enough.
+  const currentListingAnswersAsk = canAssertSameProduct(
+    askedIdentity,
+    listingIdentityText(context.listing),
+  );
   const productPhrase = extractAskedProductPhrase(latestText);
   const appleParts = extractApplePartNumbers(latestText);
   const listingHay = normalizeHay(context.listing?.title ?? "");
@@ -717,9 +709,8 @@ export async function runAiPipeline(
         // listing for another model is never an answer — enforce that here so
         // the guarantee does not depend on which search is wired in.
         const hits = askedProductIdentified
-          ? rawHits.filter(
-              (hit) =>
-                identityMatchesText(askedIdentity, hit.title) !== "mismatch",
+          ? rawHits.filter((hit) =>
+              canAssertSameProduct(askedIdentity, hit.matchText ?? hit.title),
             )
           : rawHits;
         const askedLabel = askedProductIdentified

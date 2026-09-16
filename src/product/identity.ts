@@ -10,6 +10,8 @@
  * does.
  */
 
+import { codesForProduct, identityForCode } from "./references.js";
+
 export type ProductBrand =
   | "apple"
   | "samsung"
@@ -313,7 +315,10 @@ export function extractProductIdentities(text: string): ProductIdentity[] {
   const hay = collapseSeriesLetters(normalizeProductText(text));
   const codes = extractModelCodes(hay);
   const network = readNetwork(hay);
-  const found = parseIdentities(hay, codes, network);
+  // The code is not a model name: without this, "A146B" reads as a Galaxy A146
+  // and "(A135F)" adds a phantom A135 next to the real A13.
+  const named = maskCodes(hay, codes);
+  const found = parseIdentities(named, codes, network);
 
   // "Ecran iPhone 11 / 11 Pro / 11 Pro Max" — only the first segment repeats the
   // family, so the others are invisible without carrying it over.
@@ -321,7 +326,10 @@ export function extractProductIdentities(text: string): ProductIdentity[] {
     const family = found[0]?.family;
     if (family) {
       for (const segment of text.split("/").slice(1)) {
-        const segHay = collapseSeriesLetters(normalizeProductText(segment));
+        const segHay = maskCodes(
+          collapseSeriesLetters(normalizeProductText(segment)),
+          codes,
+        );
         if (!segHay) continue;
         for (const extra of parseIdentities(`${family} ${segHay}`, codes, network)) {
           if (!found.some((f) => identityKey(f) === identityKey(extra))) {
@@ -438,6 +446,10 @@ export function isEmptyIdentity(id: ProductIdentity | null | undefined): boolean
 /**
  * Strict comparison. "mismatch" is a hard no: never answer "oui", never link.
  * "unknown" means we could not establish it — abstain rather than guess.
+ *
+ * Asked and candidate are NOT interchangeable. A buyer who names a code is
+ * entitled to that exact code; a buyer who names only "MacBook Pro 13" is
+ * answered by whichever MacBook Pro 13 the listing happens to be.
  */
 export function compareIdentities(
   asked: ProductIdentity | null | undefined,
@@ -447,15 +459,27 @@ export function compareIdentities(
   const a = asked as ProductIdentity;
   const b = candidate as ProductIdentity;
 
+  // Brand settles it before anything else — an Apple part never answers a
+  // Samsung question, whatever else the two texts share.
+  if (a.brand && b.brand && a.brand !== b.brand) return "mismatch";
+
   // A manufacturer code is the strongest signal there is: A137F ≠ A135F.
   if (a.codes.length > 0 && b.codes.length > 0) {
     const shared = a.codes.some((x) => b.codes.some((y) => codesMatch(x, y)));
-    if (!shared) return "mismatch";
-    return "match";
+    return shared ? "match" : "mismatch";
   }
 
-  if (a.brand && b.brand && a.brand !== b.brand) return "mismatch";
+  // The buyer named a code and the listing does not print one. The product
+  // name alone usually cannot answer that.
+  if (a.codes.length > 0) return compareCodeToNamedProduct(a, b);
 
+  return compareNamedProducts(a, b);
+}
+
+function compareNamedProducts(
+  a: ProductIdentity,
+  b: ProductIdentity,
+): IdentityComparison {
   const keyA = familyKey(a);
   const keyB = familyKey(b);
   if (keyA && keyB && keyA !== keyB) return "mismatch";
@@ -468,6 +492,58 @@ export function compareIdentities(
   if (a.network && b.network && a.network !== b.network) return "mismatch";
 
   return "match";
+}
+
+/**
+ * "Avez-vous l'écran A137F ?" against a listing titled only "Galaxy A13 4G".
+ *
+ * The name is answerable only when it belongs to exactly one code. "Galaxy A13
+ * 4G" is A135F *and* A137F, and "MacBook Pro 13" is seven different screens —
+ * in those cases the honest answer is that we do not know.
+ */
+function compareCodeToNamedProduct(
+  asked: ProductIdentity,
+  candidate: ProductIdentity,
+): IdentityComparison {
+  // Fill in the product the code stands for when the buyer did not name it.
+  const askedProduct =
+    asked.family || asked.base
+      ? asked
+      : (asked.codes.map(identityForCode).find(Boolean) ?? asked);
+
+  const named = compareNamedProducts(askedProduct, candidate);
+  if (named === "mismatch") return "mismatch";
+
+  const siblings = codesForProduct({
+    ...(candidate.brand ? { brand: candidate.brand } : {}),
+    ...(candidate.family ? { family: candidate.family } : {}),
+    ...(candidate.base ? { base: candidate.base } : {}),
+    qualifiers: candidate.qualifiers,
+    ...(candidate.network ? { network: candidate.network } : {}),
+  });
+  const onlyCode = siblings.length === 1 ? siblings[0] : undefined;
+  if (onlyCode && asked.codes.some((code) => codesMatch(code, onlyCode))) {
+    return "match";
+  }
+  return "unknown";
+}
+
+/**
+ * Whether we may make a positive claim ("oui, on l'a") about this text.
+ *
+ * "Not refuted" is not the same as "confirmed". A buyer who named a service
+ * code gets a yes only once the match is established; for a vague ask, a
+ * listing we could not read is still fair game.
+ */
+export function canAssertSameProduct(
+  asked: ProductIdentity | null | undefined,
+  text: string | undefined,
+): boolean {
+  if (isEmptyIdentity(asked)) return true;
+  const verdict = identityMatchesText(asked, text);
+  if (verdict === "match") return true;
+  if (verdict === "mismatch") return false;
+  return (asked as ProductIdentity).codes.length === 0;
 }
 
 /** Compare a buyer's ask against any product named in a title / description. */
@@ -485,6 +561,16 @@ export function identityMatchesText(
     if (verdict === "unknown") sawUnknown = true;
   }
   return sawUnknown ? "unknown" : "mismatch";
+}
+
+/** Blank out the service codes so they cannot be read as model names. */
+function maskCodes(hay: string, codes: string[]): string {
+  let out = hay;
+  for (const code of codes) {
+    const lower = code.toLowerCase();
+    out = out.split(lower).join(" ".repeat(lower.length));
+  }
+  return out;
 }
 
 /**

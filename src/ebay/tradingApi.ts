@@ -19,9 +19,21 @@ export type ListingShippingOption = {
   international?: boolean;
 };
 
+export type ListingCompatibility = {
+  specifics: Array<{ name: string; value: string }>;
+  notes?: string;
+};
+
 export type ListingDetails = {
   itemId: string;
   title?: string;
+  subtitle?: string;
+  /** Listing-level SKU — sellers often put the service code here. */
+  sku?: string;
+  /** Buyers may send an offer on this listing. */
+  bestOfferEnabled?: boolean;
+  /** eBay parts compatibility list ("Compatible with…"). */
+  compatibility: ListingCompatibility[];
   descriptionText?: string;
   categoryId?: string;
   categoryName?: string;
@@ -120,6 +132,20 @@ function parseShippingOptions(itemXml: string): ListingShippingOption[] {
   return options.slice(0, 8);
 }
 
+/** <ItemCompatibilityList> — "Compatible with: Marque X, Modèle Y". */
+function parseCompatibility(itemXml: string): ListingCompatibility[] {
+  const list = firstTag(itemXml, "ItemCompatibilityList");
+  if (!list) return [];
+  const out: ListingCompatibility[] = [];
+  for (const block of allBlocks(list, "Compatibility")) {
+    const specifics = allTagPairs(block, "Name", "Value");
+    const notes = firstTag(block, "CompatibilityNotes");
+    if (specifics.length === 0 && !notes) continue;
+    out.push({ specifics, ...(notes ? { notes } : {}) });
+  }
+  return out.slice(0, 200);
+}
+
 function sellingStatusEarly(itemXml: string): string {
   return firstTag(itemXml, "SellingStatus") ?? itemXml;
 }
@@ -158,6 +184,11 @@ export function parseGetItemListing(xml: string, itemId: string): ListingDetails
     : allTagPairs(itemXml, "Name", "Value").slice(0, 40);
 
   const variations = parseVariations(firstTag(itemXml, "Variations"));
+  const compatibility = parseCompatibility(itemXml);
+  const bestOffer = firstTag(
+    firstTag(itemXml, "ListingDetails") ?? itemXml,
+    "BestOfferEnabled",
+  );
   // If variations exist, listing-level available = sum of in-stock variants.
   const variationAvailable = variations.length
     ? variations.reduce((sum, v) => sum + v.quantityAvailable, 0)
@@ -166,6 +197,10 @@ export function parseGetItemListing(xml: string, itemId: string): ListingDetails
   return {
     itemId: firstTag(itemXml, "ItemID") || itemId,
     title: firstTag(itemXml, "Title"),
+    subtitle: firstTag(itemXml, "SubTitle"),
+    sku: firstTag(itemXml, "SKU"),
+    ...(bestOffer ? { bestOfferEnabled: bestOffer.toLowerCase() === "true" } : {}),
+    compatibility,
     descriptionText,
     categoryId: firstTag(itemXml, "CategoryID"),
     categoryName: firstTag(itemXml, "CategoryName"),

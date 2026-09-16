@@ -76,5 +76,11 @@ export const MESSAGE_SCOPE =
 export const FULFILLMENT_SCOPE =
   "https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly";
 
+/**
+ * Public marketplace catalogue (Browse API). Granted to the application token,
+ * so it needs no seller consent.
+ */
+export const BROWSE_SCOPE = "https://api.ebay.com/oauth/api_scope";
+
 /** Scopes requested at OAuth connect time (space-separated). */
 export const OAUTH_SCOPES = [MESSAGE_SCOPE, FULFILLMENT_SCOPE].join(" ");

@@ -9,6 +9,7 @@ import {
   ourRepliesSinceIncoming,
   weInitiatedContact,
 } from "./alreadyReplied.js";
+import { loadReferenceCache } from "../product/referenceCache.js";
 import { autopilotMode } from "./killSwitch.js";
 import { isMutedBuyer } from "./mutedBuyers.js";
 import {
@@ -136,6 +137,9 @@ export async function runAutopilotForUser(
     });
     return result;
   }
+
+  // What the marketplace taught us about service codes, before any matching.
+  await loadReferenceCache();
 
   // Autopilot always uses two-step reason→draft for stricter NO_REPLY.
   const prevTwoStep = process.env.OPENAI_TWO_STEP;

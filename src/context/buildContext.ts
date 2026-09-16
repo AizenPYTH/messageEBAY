@@ -181,6 +181,7 @@ export async function buildAssistantContext(
       itemId,
       title: catalogTitle,
       itemSpecifics: [],
+      compatibility: [],
       variations: [],
       shippingOptions: [],
       rawAvailable: true,

@@ -1,4 +1,5 @@
 import {
+  BROWSE_SCOPE,
   config,
   ebayUrls,
   MESSAGE_SCOPE,
@@ -98,4 +99,32 @@ export async function refreshAccessToken(
   return tokenRequest(body);
 }
 
-export { MESSAGE_SCOPE, OAUTH_SCOPES };
+/**
+ * Application token (client credentials) — for the public catalogue APIs that
+ * describe products rather than this seller's account. No user consent needed.
+ */
+let appToken: { value: string; expiresAt: number } | null = null;
+
+export async function getApplicationToken(): Promise<string> {
+  const now = Date.now();
+  if (appToken && appToken.expiresAt > now + 60_000) return appToken.value;
+
+  const tokens = await tokenRequest(
+    new URLSearchParams({
+      grant_type: "client_credentials",
+      scope: BROWSE_SCOPE,
+    }),
+  );
+  appToken = {
+    value: tokens.access_token,
+    expiresAt: now + Math.max(0, tokens.expires_in - 60) * 1000,
+  };
+  return appToken.value;
+}
+
+/** Test seam — forget the cached application token. */
+export function resetApplicationToken(): void {
+  appToken = null;
+}
+
+export { BROWSE_SCOPE, MESSAGE_SCOPE, OAUTH_SCOPES };
