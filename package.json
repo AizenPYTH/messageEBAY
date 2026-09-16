@@ -27,6 +27,8 @@
     "catalog": "tsx src/catalog-cli.ts",
     "refs": "tsx src/refs-cli.ts",
     "audit": "tsx src/audit-cli.ts",
+    "autopilot:status": "tsx src/autopilot-cli.ts status",
+    "autopilot:off": "tsx src/autopilot-cli.ts off",
     "web": "npm run dev --workspace=web",
     "web:build": "npm run build --workspace=web",
     "web:start": "npm run start --workspace=web",

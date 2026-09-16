@@ -117,9 +117,23 @@ le brouillon ou le motif du silence. C'est l'étape entre « les tests passent �
 ### Couper l'auto-réponse
 
 ```bash
+npm run autopilot:status   # quels profils envoient encore
+npm run autopilot:off      # coupe l'auto-réponse sur TOUS les profils
+```
+
+Puis, côté hébergeur, pour arrêter le cron lui-même :
+
+```bash
 AUTOPILOT_ENABLED=false   # rien n'est lu, rien n'est envoyé
 AUTOPILOT_DRY_RUN=true    # brouillons calculés et logués, jamais envoyés
 ```
+
+> **Le bouton de l'interface ne coupe qu'un profil.** Avec `SKIP_AUTH`, un
+> vendeur est identifié par un cookie de navigateur : une même boutique peut
+> donc posséder plusieurs profils (un par navigateur, par appareil, ou par
+> cookie effacé). Chacun garde son propre jeton eBay et continue de répondre.
+> `npm run autopilot:off` les atteint tous ; la réponse du cron liste désormais
+> `activeProfiles` pour voir lesquels tournent.
 
 ### Parcours SaaS
 

@@ -103,6 +103,51 @@ export async function setAutopilotEnabled(
   return data as AppProfileRow;
 }
 
+/**
+ * Every profile with auto-reply on, with enough detail to recognise it.
+ *
+ * With SKIP_AUTH the identity is a per-browser guest cookie, so a shop can end
+ * up with several profiles: one per browser, per device, or per time the cookie
+ * was cleared. Turning the toggle off in one browser leaves the others running,
+ * which is exactly how a shop can believe auto-reply is off while it is not.
+ */
+export async function listAutopilotProfiles(): Promise<AppProfileRow[]> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .schema("ebay_ai")
+    .from(TABLE)
+    .select("*")
+    .eq("autopilot_enabled", true);
+
+  if (error) {
+    throw new Error(`listAutopilotProfiles failed: ${error.message}`);
+  }
+  return (data as AppProfileRow[]) ?? [];
+}
+
+/** Turn auto-reply off on EVERY profile. Returns the ones that were on. */
+export async function disableAutopilotEverywhere(): Promise<AppProfileRow[]> {
+  const wereOn = await listAutopilotProfiles();
+  if (wereOn.length === 0) return [];
+
+  const supabase = getSupabaseClient();
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .schema("ebay_ai")
+    .from(TABLE)
+    .update({
+      autopilot_enabled: false,
+      autopilot_updated_at: now,
+      updated_at: now,
+    })
+    .eq("autopilot_enabled", true);
+
+  if (error) {
+    throw new Error(`disableAutopilotEverywhere failed: ${error.message}`);
+  }
+  return wereOn;
+}
+
 export async function listAutopilotUserIds(): Promise<string[]> {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase

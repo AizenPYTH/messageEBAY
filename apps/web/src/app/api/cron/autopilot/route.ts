@@ -54,6 +54,10 @@ async function handle(request: Request): Promise<Response> {
       ok: true,
       ...totals,
       users: result.users.length,
+      // Which profiles actually sent — a shop with several browser cookies can
+      // own several profiles, and turning the toggle off in one leaves the
+      // others running.
+      activeProfiles: result.users.map((u) => u.userId),
       startedAt: result.startedAt,
       finishedAt: result.finishedAt,
       details: result.users,
