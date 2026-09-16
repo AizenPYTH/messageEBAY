@@ -65,6 +65,7 @@ import {
   isOffPlatformPaymentAsk,
 } from "../analysis/auction.js";
 import { unprovableContentsAsk } from "../analysis/contentsAsk.js";
+import { isAboutExistingOrder } from "../analysis/orderContext.js";
 import {
   formatFirmPriceReply,
   isPriceNegotiation,
@@ -809,6 +810,29 @@ export async function runAiPipeline(
     isTrackingRequest(latestText) ||
     pendingBuyerMessages.some((m) => isTrackingRequest(m.messageBody));
 
+  const orderAsk =
+    isAboutExistingOrder(askNow) ||
+    isAboutExistingOrder(latestText) ||
+    pendingBuyerMessages.some((m) => isAboutExistingOrder(m.messageBody));
+
+  // What this buyer actually bought. Without it, a question about an order has
+  // nothing factual behind it and the reply drifts to the catalogue.
+  let buyerOrders: Awaited<
+    ReturnType<NonNullable<AiEngineDeps["loadBuyerOrders"]>>
+  > = [];
+  if (deps.loadBuyerOrders && (orderAsk || trackingAsk)) {
+    const buyerUsername = pendingBuyerMessages
+      .map((m) => m.senderUsername?.trim())
+      .find((name) => name && name !== sellerUsername);
+    buyerOrders = await deps
+      .loadBuyerOrders({
+        ...(buyerUsername ? { buyerUsername } : {}),
+        ...(context.listing?.itemId ? { itemId: context.listing.itemId } : {}),
+        limit: 3,
+      })
+      .catch(() => []);
+  }
+
   let shipment = undefined as
     | Awaited<ReturnType<NonNullable<AiEngineDeps["resolveShipment"]>>>
     | undefined;
@@ -894,6 +918,7 @@ export async function runAiPipeline(
     listing: context.listing,
     sellerProfile,
     shipment,
+    orders: buyerOrders,
     threadDigest: digest,
     currentAsk: askNow,
   });

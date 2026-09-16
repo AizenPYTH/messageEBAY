@@ -11,6 +11,7 @@ import {
   toPromptSimilarSnippets,
 } from "../rag/index.js";
 import { loadPromptSellerProfile } from "../seller/profileService.js";
+import { findBuyerOrders } from "../ebay/ordersApi.js";
 import { resolveShipment } from "../shipping/index.js";
 import { createAiEngine } from "./engine.js";
 import type { AiEngine, AiEngineDeps, LlmCompletionResult } from "./types.js";
@@ -72,6 +73,7 @@ export function createDefaultAiEngineDeps(
     resolveShipment: ({ conversationId, itemId }) =>
       resolveShipment({ conversationId, itemId }),
     searchCatalog: (input) => searchSellerCatalogLive(input),
+    loadBuyerOrders: (input) => findBuyerOrders(input),
     defaultModel: DEFAULT_PROMPT_MODEL,
     ...overrides,
   };

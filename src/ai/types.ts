@@ -10,6 +10,7 @@ import type {
 } from "../prompt/types.js";
 import type { SimilarConversationExample } from "../rag/types.js";
 import type { ShipmentResolution } from "../shipping/types.js";
+import type { SellerOrder } from "../ebay/ordersApi.js";
 
 export type TokenUsage = {
   promptTokens?: number;
@@ -53,6 +54,12 @@ export type AiEngineDeps = {
     conversationId: string;
     itemId?: string;
   }) => Promise<ShipmentResolution>;
+  /** Orders this buyer placed with us (optional — needs the fulfillment scope). */
+  loadBuyerOrders?: (input: {
+    buyerUsername?: string;
+    itemId?: string;
+    limit?: number;
+  }) => Promise<SellerOrder[]>;
   /** Search seller catalog (all active listings + stock). */
   searchCatalog?: (input: {
     sellerUsername: string;

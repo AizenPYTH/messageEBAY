@@ -4,6 +4,7 @@ import type { ListingDetails } from "../ebay/tradingApi.js";
 import { isFromSelf } from "../conversations/messageSides.js";
 import { selectListingFacts } from "./selectListingFacts.js";
 import type { ShipmentResolution } from "../shipping/types.js";
+import { describeOrder, type SellerOrder } from "../ebay/ordersApi.js";
 import {
   CORE_REPLY_PRINCIPLES,
   FORBIDDEN_UNLESS_BUYER_ASKED,
@@ -17,6 +18,8 @@ export type ReplyFactPack = {
   buyerAsks: string[];
   listingFacts: string[];
   shipmentLine?: string;
+  /** What this buyer actually bought from us, newest first. */
+  orderLines: string[];
   policyLines: string[];
   listingAnswerability?: string;
   listingEvidence: string[];
@@ -59,6 +62,7 @@ export function buildFactPack(input: {
   listing?: ListingDetails;
   sellerProfile?: SellerProfile | null;
   shipment?: ShipmentResolution;
+  orders?: SellerOrder[];
   threadDigest?: string;
   currentAsk?: string;
 }): ReplyFactPack {
@@ -99,6 +103,7 @@ export function buildFactPack(input: {
     buyerAsks,
     listingFacts: selectListingFacts(input.listing, current),
     shipmentLine: shipmentLine(input.shipment),
+    orderLines: (input.orders ?? []).slice(0, 3).map(describeOrder),
     policyLines,
     listingAnswerability: input.plan.listingAnswerability,
     listingEvidence: input.plan.listingEvidence ?? [],
@@ -131,6 +136,14 @@ export function formatFactPackSection(pack: ReplyFactPack): string {
 
   lines.push("", "========== FAITS PRODUIT (seulement ceux utiles à la demande) ==========");
   for (const f of pack.listingFacts) lines.push(`- ${f}`);
+
+  if (pack.orderLines.length) {
+    lines.push(
+      "",
+      "========== COMMANDE(S) DE CE CLIENT (rester dessus, jamais le catalogue) ==========",
+    );
+    for (const line of pack.orderLines) lines.push(`- ${line}`);
+  }
 
   if (pack.shipmentLine) {
     lines.push("", pack.shipmentLine);

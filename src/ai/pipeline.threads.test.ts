@@ -14,6 +14,7 @@ import {
 } from "../analysis/index.js";
 import type { AssistantContext } from "../context/buildContext.js";
 import type { EbayMessage } from "../ebay/messageApi.js";
+import type { SellerOrder } from "../ebay/ordersApi.js";
 import type { ListingDetails } from "../ebay/tradingApi.js";
 import { buildPrompt } from "../prompt/buildPrompt.js";
 import { runAiPipeline } from "./pipeline.js";
@@ -32,6 +33,7 @@ function listing(partial: Partial<ListingDetails>): ListingDetails {
   return {
     itemId: "318028174968",
     itemSpecifics: [],
+    compatibility: [],
     variations: [],
     shippingOptions: [],
     rawAvailable: true,
@@ -70,8 +72,10 @@ function deps(input: {
   listing: ListingDetails;
   messages: EbayMessage[];
   catalog?: CatalogRow[];
+  orders?: SellerOrder[];
   /** Draft the model returns, for the cases that legitimately reach it. */
   llmDraft?: string;
+  onPrompt?: (userPrompt: string) => void;
 }): AiEngineDeps {
   const context: AssistantContext = {
     conversationId: "c1",
@@ -91,13 +95,15 @@ function deps(input: {
     searchSimilarConversations: async () => [],
     toPromptSimilarSnippets: () => [],
     buildPrompt,
-    completeChat: async () => {
+    completeChat: async (request) => {
+      input.onPrompt?.(request.userPrompt);
       if (input.llmDraft == null) {
         throw new Error("the LLM must not be reached in these cases");
       }
       return { text: input.llmDraft, raw: {} };
     },
     ...(input.catalog ? { searchCatalog: fakeCatalog(input.catalog) } : {}),
+    ...(input.orders ? { loadBuyerOrders: async () => input.orders ?? [] } : {}),
     defaultModel: "test-model",
   };
 }
@@ -326,5 +332,66 @@ describe("hl5198 — le fil est clos", () => {
       llmDraft: "Bonjour,\n\nOui c'est dispo.\n\nCordialement,\nSNOWOLF",
     });
     assert.notEqual(reply, "");
+  });
+});
+
+describe("arapu17 — la commande est dans les faits", () => {
+  it("puts the buyer's own order in front of the model", async () => {
+    let prompt = "";
+    await run({
+      listing: listing({ itemId: "318028100022", title: "Topcase MacBook Pro 14 A2442" }),
+      messages: buyerMessages([
+        "Bonjour, avez-vous des retours par rapport à ma commande ?",
+      ]),
+      orders: [
+        {
+          orderId: "12-34-56",
+          buyerUsername: BUYER,
+          creationDate: "2026-09-12T08:30:00.000Z",
+          fulfillmentStatus: "NOT_STARTED",
+          paymentStatus: "PAID",
+          lineItems: [
+            { itemId: "318028100022", title: "Topcase MacBook Pro 14 A2442", quantity: 1 },
+          ],
+          trackingNumbers: [],
+        },
+      ],
+      llmDraft: "Bonjour,\n\nVotre commande part aujourd'hui.\n\nCordialement,\nSNOWOLF",
+      onPrompt: (userPrompt) => {
+        prompt = userPrompt;
+      },
+    });
+    assert.match(prompt, /COMMANDE\(S\) DE CE CLIENT/);
+    assert.match(prompt, /12-34-56/);
+    assert.match(prompt, /pas encore expédiée/);
+  });
+});
+
+describe("le code de service dans les caractéristiques, pas le titre", () => {
+  it("answers a coded question when the specifics carry the code", async () => {
+    const reply = await run({
+      listing: listing({
+        itemId: "318028100030",
+        title: "Ecran Complet Galaxy A13 4G (Avec châssis)",
+        itemSpecifics: [{ name: "Modèle compatible", value: "SM-A137F" }],
+        quantityAvailable: 4,
+      }),
+      messages: buyerMessages(["Vous avez un écran Samsung a 13 4g modèle a137F?"]),
+    });
+    assert.doesNotMatch(reply, /Désolé/i);
+  });
+
+  it("stays silent when nothing says which code the listing is", async () => {
+    const reply = await run({
+      listing: listing({
+        itemId: "318028100031",
+        title: "Ecran Complet Galaxy A13 4G (Avec châssis)",
+        quantityAvailable: 4,
+      }),
+      messages: buyerMessages(["Vous avez un écran Samsung a 13 4g modèle a137F?"]),
+      catalog: [],
+      llmDraft: "Bonjour,\n\nOui c'est dispo.\n\nCordialement,\nSNOWOLF",
+    });
+    assert.doesNotMatch(reply, /Oui/i);
   });
 });
