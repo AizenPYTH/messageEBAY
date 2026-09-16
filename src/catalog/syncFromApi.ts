@@ -8,9 +8,16 @@ import type { CatalogSyncResult } from "./importCsv.js";
 function searchTextFromListing(listing: ListingDetails): string {
   const parts = [
     listing.title ?? "",
+    listing.subtitle ?? "",
+    listing.sku ?? "",
     listing.condition ?? "",
     listing.categoryName ?? "",
     ...listing.itemSpecifics.flatMap((s) => [s.name, s.value]),
+    // "Compatible with SM-A137F" is often the only place the code appears.
+    ...(listing.compatibility ?? []).flatMap((c) => [
+      ...c.specifics.flatMap((s) => [s.name, s.value]),
+      c.notes ?? "",
+    ]),
     ...listing.variations.flatMap((v) => [
       v.sku ?? "",
       ...v.specifics.flatMap((s) => [s.name, s.value]),

@@ -27,6 +27,7 @@ npm run inbox
 npm run ai -- <conversationId>
 npm run sync -- <conversationId>
 npm run refs -- --gaps            # codes produit du catalogue sans référence
+npm run audit                     # ce que le bot dirait sur ta vraie boîte, sans rien envoyer
 ```
 
 ### Application web
@@ -100,6 +101,18 @@ une lecture que si le marché est d'accord avec lui-même. Les résultats sont
 stockés en base (`ebay_ai.product_references`, migration
 `20260916120000_product_references.sql`) et chargés en mémoire au démarrage de
 l'autopilot.
+
+### Vérifier avant de lancer
+
+```bash
+npm run audit                 # les 20 fils en attente de réponse
+npm run audit -- --limit 50   # plus de fils
+npm run audit -- --json       # sortie comparable d'un run à l'autre
+```
+
+Rien n'est envoyé : chaque ligne montre la demande, la branche qui a décidé, et
+le brouillon ou le motif du silence. C'est l'étape entre « les tests passent » et
+« l'autopilot est actif ».
 
 ### Couper l'auto-réponse
 

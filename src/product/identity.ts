@@ -225,11 +225,13 @@ const FAMILY_PATTERNS: FamilyPattern[] = [
     base: (m) => m[2] ?? "",
   },
   {
+    // The trailing letter is part of the model: A10s, A20e, A52s and S10e are
+    // different phones from A10, A20, A52 and S10, with different screens.
     brand: "samsung",
-    re: /\b(?:galaxy\s*)?([asmfjz])\s*(\d{1,3})((?:\s+(?:ultra|plus|lite|fe|mini))*)/,
+    re: /\b(?:galaxy\s*)?([asmfjz])\s*(\d{1,3})([se])?\b((?:\s+(?:ultra|plus|lite|fe|mini))*)/,
     family: () => "galaxy",
-    base: (m) => `${m[1] ?? ""}${m[2] ?? ""}`,
-    tail: 3,
+    base: (m) => `${m[1] ?? ""}${m[2] ?? ""}${m[3] ?? ""}`,
+    tail: 4,
   },
   // Xiaomi
   {
@@ -280,13 +282,21 @@ function buildLabel(id: Omit<ProductIdentity, "label">): string {
   const parts = [
     brandWord,
     id.family ? titleCaseFamily(id.family) : "",
-    id.base ? id.base.toUpperCase() : "",
+    id.base ? formatBase(id.base) : "",
     ...id.qualifiers.map((q) => (q === "fe" ? "FE" : capitalize(q))),
     id.network ? id.network.toUpperCase() : "",
   ].filter(Boolean);
   const named = parts.join(" ").trim();
   if (named) return named;
   return id.codes[0] ?? "";
+}
+
+/** "a10s" → "A10s", "13" → "13". */
+function formatBase(base: string): string {
+  const upper = base.toUpperCase();
+  return /[SE]$/.test(upper) && /\d/.test(upper)
+    ? `${upper.slice(0, -1)}${upper.slice(-1).toLowerCase()}`
+    : upper;
 }
 
 function capitalize(value: string): string {

@@ -51,6 +51,39 @@ describe("table de références", () => {
     assert.equal(identity?.base, "13");
   });
 
+  it("every row parses back to the product it claims to be", () => {
+    // This caught the parser dropping Samsung's trailing letter: A10s was read
+    // as A10 and S10e as S10 — different phones, different screens.
+    const wrong: string[] = [];
+    for (const reference of PRODUCT_REFERENCES) {
+      const parsed = extractAskedIdentity(reference.label);
+      if (
+        !parsed ||
+        parsed.family !== reference.family ||
+        parsed.base !== reference.base
+      ) {
+        wrong.push(
+          `${reference.code} "${reference.label}" → ${parsed?.family}/${parsed?.base} (attendu ${reference.family}/${reference.base})`,
+        );
+      }
+    }
+    assert.deepEqual(wrong, []);
+  });
+
+  it("keeps models that differ by one letter apart", () => {
+    for (const [a, b] of [
+      ["Galaxy A10", "Galaxy A10s"],
+      ["Galaxy S10", "Galaxy S10e"],
+      ["Galaxy A52 5G", "Galaxy A52s 5G"],
+    ]) {
+      assert.equal(
+        compareIdentities(extractAskedIdentity(a!), extractAskedIdentity(b!)),
+        "mismatch",
+        `${a} vs ${b}`,
+      );
+    }
+  });
+
   it("reports codes it does not know yet", () => {
     assert.deepEqual(unknownCodesIn("Ecran Galaxy A13 (A137F) et (A999Z)"), ["A999Z"]);
   });

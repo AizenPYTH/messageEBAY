@@ -26,6 +26,7 @@
     "track": "tsx src/track-cli.ts",
     "catalog": "tsx src/catalog-cli.ts",
     "refs": "tsx src/refs-cli.ts",
+    "audit": "tsx src/audit-cli.ts",
     "web": "npm run dev --workspace=web",
     "web:build": "npm run build --workspace=web",
     "web:start": "npm run start --workspace=web",

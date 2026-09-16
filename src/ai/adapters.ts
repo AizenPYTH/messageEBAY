@@ -10,6 +10,7 @@ import {
   searchSimilarConversations,
   toPromptSimilarSnippets,
 } from "../rag/index.js";
+import { loadReferenceCache } from "../product/referenceCache.js";
 import { loadPromptSellerProfile } from "../seller/profileService.js";
 import { findBuyerOrders } from "../ebay/ordersApi.js";
 import { resolveShipment } from "../shipping/index.js";
@@ -57,7 +58,12 @@ export function createDefaultAiEngineDeps(
   };
 
   return {
-    loadContext: (conversationId) => buildAssistantContext(conversationId),
+    // Every consumer of the default engine — web, CLI, autopilot — gets what
+    // the marketplace taught us about service codes before it matches anything.
+    loadContext: async (conversationId) => {
+      await loadReferenceCache();
+      return buildAssistantContext(conversationId);
+    },
     loadSellerProfile: (username) => loadPromptSellerProfile(username),
     analyzeMessage: ({ text, listing }) =>
       enrichResponsePlanWithListing(analyzeMessage(text), text, listing),
